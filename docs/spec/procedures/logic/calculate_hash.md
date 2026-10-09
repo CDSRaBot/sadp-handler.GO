@@ -17,9 +17,9 @@ func CalculateHash(password, challenge string) (string, error)
 
 ## 3. Algorithm Contract and Verification Gate
 
-The current SADP procedure proposal is SHA-256 over the UTF-8 bytes of `password + challenge`, in that order, followed by lowercase hexadecimal encoding using Go's `crypto/sha256` and `encoding/hex`.
+The local Python reference computes SHA-256 over the UTF-8 bytes of `password + challenge`, in that order, followed by lowercase hexadecimal encoding. A Go implementation intended to match that reference would use `crypto/sha256` and `encoding/hex`.
 
-This proposal is not considered verified merely because it appears here. Before implementation is treated as device-compatible, compare it with an authoritative Hikvision protocol description or known-good test vectors. If the verified protocol specifies a different order, encoding, normalization, or algorithm, update this procedure and its dependent XML procedure together. Do not silently fall back to plaintext credentials when verification fails or the challenge is missing.
+This is Python-reference behavior, not independent verification of the device protocol. The reference does not negotiate a challenge; it accepts one from its caller. Before claiming compatibility, verify the challenge source and calculation against a known-good device exchange or authoritative description. Update this procedure and dependent XML requirements if the evidence differs. Never fall back to plaintext credentials when the challenge is missing.
 
 ## 4. Errors and Tests
 

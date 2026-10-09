@@ -14,6 +14,10 @@ Implement device-management rules for activation and network configuration. The 
 
 The exact challenge-response algorithm and wire-level fields must be specified by the corresponding protocol procedures; this module specification does not prescribe an unverified hash algorithm.
 
+M1 currently defines receive APIs only. The XML builders in this module do not provide end-to-end activation or network-configuration operations until a verified send/response transport contract and the corresponding context-aware workflow APIs are specified.
+
+The local Python reference provides a behavioral proposal: it builds `Activate` XML with `TargetMAC`, `Password`, and optional `OptionData/SecurityEmail`; it builds `NetworkParameter` XML with `TargetMAC`, `DHCP`, optional static-address fields, and `SecurityResponse` when a challenge is supplied. It calculates that response as SHA-256 of UTF-8 `password + challenge`. These shapes and calculation are useful for compatibility fixtures but are not authoritative protocol facts until compared with a known-good device exchange.
+
 ## 3. Go API Contract
 
 The following signatures describe the module contract; concrete package paths and exported names are finalized with the implementation:
@@ -54,6 +58,7 @@ func BuildNetworkXML(
 - Do not embed protocol secrets or assume a hash/response algorithm unless it is confirmed by the protocol specification.
 - Return errors with operation and device context while avoiding disclosure of credentials. Preserve wrapped causes for callers.
 - Do not use `panic` for invalid requests, device rejections, or transport failures.
+- Do not copy the Python reference's missing-challenge fallback, which inserts the plaintext password into the network-configuration XML. A missing challenge must fail closed unless an explicitly named, separately reviewed compatibility mode is required and approved.
 
 ## 5. Testing Requirements
 

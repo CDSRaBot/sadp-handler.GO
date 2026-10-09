@@ -2,7 +2,7 @@
 
 ## Project status
 
-The repository currently contains design documentation; implementation has not started. Generic HTTP/JSON starter files were removed because they did not implement the SADP specifications. The phase 3 audit is still open pending confirmation of protocol details and finalization of module/package paths.
+The repository currently contains design documentation; Go implementation has not started. The local Python reference is documented as a behavioral baseline, while the phase 3 audit remains open for unresolved protocol details and finalization of module/package paths.
 
 ## Documentation
 
