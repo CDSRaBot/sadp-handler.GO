@@ -20,17 +20,17 @@ func BuildActivationXML(request ActivationRequest) ([]byte, error)
 
 ## 3. Processing Requirements
 
-1. Validate the target MAC as an EUI-48 address and validate the password using M3's password policy.
+1. Validate the target MAC as an EUI-48 address and validate the password using M3's password policy. The Python reference requires 8–16 characters and at least two of lowercase, uppercase, digit, or non-alphanumeric classes.
 2. Construct XML with `encoding/xml`; do not concatenate untrusted values into XML strings.
-3. Use the protocol-defined element names and casing:
+3. Match the local Python reference's current element names and casing:
    - Root: `<Activate>`.
-   - Target: `<TargetMAC>`.
+   - Target: `<TargetMAC>` using uppercase, colon-separated EUI-48 text for the Python-reference compatibility fixture. This casing is not an independently verified wire-protocol requirement.
    - Credential: `<Password>`.
    - If recovery email is present, include `<OptionData><SecurityEmail>…</SecurityEmail></OptionData>`.
 4. Let the XML encoder escape text content. Since `encoding/xml` does not add a declaration automatically, prepend `xml.Header` to the marshaled XML bytes.
-5. Keep the resulting payload scoped to the operation and pass it only to the transport layer that sends the activation command.
+5. Keep the resulting payload scoped to the operation. M1 currently specifies receiving only and has no send API; transmission and response handling are protocol gates documented in the system specification. Do not describe this builder alone as a completed activation operation.
 
-The field names and XML shape must be checked against authoritative protocol documentation or known-good device fixtures before claiming device compatibility.
+These are Python-reference request fields, not yet verified against an authoritative SADP wire specification or known-good device exchange. Preserve them as compatibility fixtures, not universal protocol guarantees.
 
 ## 4. Errors and Tests
 

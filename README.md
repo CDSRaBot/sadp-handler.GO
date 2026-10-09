@@ -4,7 +4,7 @@ SADP-handler is a planned Go command-line utility for discovering, activating, a
 
 ## Project status
 
-The repository currently contains design documentation; implementation has not started. Generic HTTP/JSON starter files were removed because they did not implement the specified SADP system. Protocol details that require confirmation are listed in the system specification. There is no runnable application or build target until implementation begins.
+The repository currently contains design documentation; Go implementation has not started. The local Python reference is documented as a behavioral baseline, while protocol compatibility gates remain open. Generic HTTP/JSON starter files were removed because they did not implement the specified SADP system. See the system specification for reference behavior and unresolved protocol details.
 
 ## Design
 
@@ -25,4 +25,4 @@ The repository currently contains design documentation; implementation has not s
 
 ## Implementation status
 
-All repository filesystem paths in documentation, configuration, and build instructions are relative to the project root. Go package imports use the module path above. Do not treat the former starter-code layout or its placeholder APIs as implementation requirements. Package boundaries, exported APIs, and protocol constants are to be finalized after the specification audit gates in `docs/spec/SYSTEM.md` are resolved.
+All repository filesystem paths in documentation, configuration, and build instructions are relative to the project root. Go package imports use the module path above. Do not treat the former starter-code layout or its placeholder APIs as implementation requirements. The Python reference's behavior is a local compatibility target, not an authoritative protocol specification; review the open gates in `docs/spec/SYSTEM.md` before claiming SADP compatibility.

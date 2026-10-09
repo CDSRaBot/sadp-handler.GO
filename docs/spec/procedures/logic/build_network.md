@@ -26,16 +26,16 @@ func BuildNetworkXML(
 ## 3. Processing Requirements
 
 1. Validate the target MAC as EUI-48 and apply the M3 network-configuration rules. For DHCP, static address and gateway fields must be unset; for static configuration, the address must be IPv4 and any specified gateway must be valid IPv4.
-2. Calculate the security response with P3.5 `CalculateHash`. Its algorithm remains subject to the protocol verification gate in that procedure.
-3. Construct the protocol-defined `<NetworkParameter>` XML using `encoding/xml`:
-   - `<TargetMAC>`: canonical target MAC.
+2. Require a non-empty challenge and calculate the reference response with P3.5 `CalculateHash`. Its algorithm remains subject to the protocol verification gate in that procedure.
+3. Match the local Python reference's current `<NetworkParameter>` XML shape using `encoding/xml`:
+   - `<TargetMAC>`: uppercase, colon-separated EUI-48 text for the Python-reference compatibility fixture. This casing is not an independently verified wire-protocol requirement.
    - `<DHCP>`: lowercase `true` or `false`.
-   - For static configuration, include `<IPv4Address>`, `<SubnetMask>`, and `<DefaultGateway>` as required by the protocol.
+   - For static configuration, include non-empty `<IPv4Address>`, `<SubnetMask>`, and `<DefaultGateway>` values.
    - Include `<SecurityResponse>` with the calculated response.
 4. Serialize with `encoding/xml`; prepend `xml.Header` because the encoder does not add a declaration automatically. Do not build XML by string formatting.
-5. Pass the result to M1 for transmission; this procedure does not perform network I/O.
+5. Keep the result as a payload for the future transport integration; this procedure does not perform network I/O. M1 currently specifies receiving only and has no send API, so network-configuration transmission and response handling remain open protocol gates. Do not describe this builder alone as a completed network-configuration operation.
 
-The exact XML fields, whether a gateway is mandatory, and the security-response algorithm must be verified against authoritative protocol documentation or known-good device fixtures before claiming compatibility.
+The Python reference conditionally emits each non-empty static-address field. Its missing-challenge branch emits `<Password>` in plaintext; Go must not copy this fallback. The exact XML fields, optional-field rules, and security-response algorithm must be verified against known-good device fixtures before claiming device compatibility.
 
 ## 4. Errors and Tests
 

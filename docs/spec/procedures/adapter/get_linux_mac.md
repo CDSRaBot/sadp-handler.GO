@@ -11,7 +11,7 @@ Read and validate the hardware address for a named Linux or Android (Termux) net
 func getLinuxMAC(interfaceName string) (net.HardwareAddr, error)
 ```
 
-- Reject an empty interface name or a name containing path separators or a NUL byte.
+- Reject an empty interface name, `"."`, `".."`, or a name containing path separators or a NUL byte.
 - Return a validated six-byte EUI-48 hardware address on success.
 - Return an error if the interface address cannot be read or is invalid. Do not return an empty string, placeholder, or guessed address.
 
