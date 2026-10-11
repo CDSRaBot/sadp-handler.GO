@@ -28,7 +28,7 @@ func BuildActivationXML(request ActivationRequest) ([]byte, error)
    - Credential: `<Password>`.
    - If recovery email is present, include `<OptionData><SecurityEmail>…</SecurityEmail></OptionData>`.
 4. Let the XML encoder escape text content. Since `encoding/xml` does not add a declaration automatically, prepend `xml.Header` to the marshaled XML bytes.
-5. Keep the resulting payload scoped to the operation. M1 currently specifies receiving only and has no send API; transmission and response handling are protocol gates documented in the system specification. Do not describe this builder alone as a completed activation operation.
+5. Keep the resulting payload scoped to the operation. M1 currently specifies inquiry-probe sending and receiving only; it has no activation-command send API. Activation transmission and response handling are protocol gates documented in the system specification. Do not describe this builder alone as a completed activation operation.
 
 These are Python-reference request fields, not yet verified against an authoritative SADP wire specification or known-good device exchange. Preserve them as compatibility fixtures, not universal protocol guarantees.
 

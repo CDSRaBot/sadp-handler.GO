@@ -6,7 +6,7 @@ Validate untrusted SADP datagrams and transform valid device advertisements into
 
 ## 2. Responsibilities
 
-- Parse the XML advertisement shape used by the Python reference with Go's standard-library `encoding/xml`.
+- Parse the XML advertisement shape used by the Python reference and the observed Hikvision `ProbeMatch` and `Hello` messages with Go's standard-library `encoding/xml`.
 - Validate required fields and normalize values such as MAC and IPv4 addresses.
 - Represent device attributes using typed Go fields rather than loosely typed maps.
 - Return errors that distinguish malformed XML from missing or invalid required values.
@@ -34,6 +34,11 @@ func NormalizeMAC(value string) (net.HardwareAddr, error)
 
 - `ParseAdvertisement` receives the datagram and sender address from M1, and returns a validated device and a nil error on success. On failure it returns an error and no usable device.
 - `MAC` and `IPv4` are required. If `<Activated>` is absent or empty, set `Activated` to `false` to match the Python reference; accept case-insensitive `true`/`false` and reject other non-empty values. `Model` and `SerialNumber` may be empty. If `<SoftwareVersion>` is absent, use `"Unknown"` as in the reference.
+- The user-provided device capture has root `<ProbeMatch>` and direct-child fields `<MAC>`, `<IPv4Address>`, `<Activated>`, `<DeviceDescription>`, `<DeviceSN>`, and `<SoftwareVersion>`. Map `DeviceDescription` to `Model` and `DeviceSN` to `SerialNumber`; continue accepting the Python-reference names `DeviceModel` and `SerialNumber`. For either mapped value, accept one of the two names; if both aliases are present with different non-empty values, return an ambiguity error rather than silently choosing one.
+- `<Uuid>` and `<Types>inquiry</Types>` were present in the observed `ProbeMatch`; preserve them as recognized protocol metadata if represented by the implementation, but do not make UUID matching a parser requirement or infer a general correlation policy from one exchange.
+- A later capture shows a separate root `<Hello>` with `<Types>hello</Types>`, no displayed UUID, and overlapping device-information fields. Accept this observed message shape as a device advertisement: recognize both `<ProbeMatch>` with `inquiry` and `<Hello>` with `hello`; do not require a UUID for `Hello` or assume it is caused by, or correlated to, an inquiry probe. Any other root/type combinations require additional evidence.
+- The observed response also contains optional device type, command/HTTP ports, IPv4/IPv6 configuration, DHCP, channel counts, software/DSP versions, boot time, activation/security capabilities, reset/lock fields, and `<Salt>`. The current `Device` contract need not expose every optional field. Treat unmodeled optional fields as untrusted opaque input; never log complete response XML or security-related values such as `Salt`.
+- The sample spells two boolean-looking values as `flase` (`IsModifyVerificationCode` and `DeviceLock`). They are not current `Device` fields. Do not silently parse these values as `false`; if either becomes a typed field, define and test explicit compatibility handling first.
 - The Python reference accepts non-empty packets up to its `MAX_PACKET_SIZE` of 1500 bytes, decodes UTF-8 and falls back to ISO-8859-1, and parses the XML with `defusedxml`. The 1500-byte value is not a verified SADP protocol limit. A Go implementation may retain it as the named `MaxSADPDatagramSize` application resource bound shared with M1; do not describe it as the protocol maximum or infer its validity from Ethernet MTU.
 - The reference reads direct child values for `MAC`, `IPv4Address`, `Activated`, `DeviceModel`, `SerialNumber`, and optionally `SoftwareVersion`; it requires only MAC and IPv4 address to construct a model. Preserve these observed field names and direct-child behavior in fixtures. More restrictive requirements need device evidence and a deliberate spec revision.
 - Empty or oversized packets, malformed XML, invalid required values, and incomplete advertisements are errors in the Go API even though the Python callback-oriented parser returns `None` for several invalid cases.
@@ -49,6 +54,7 @@ func NormalizeMAC(value string) (net.HardwareAddr, error)
 - Enforce required-field, string-length, and protocol-value constraints before constructing `Device`. `MaxSADPDatagramSize`, if used, is one shared application resource limit for M1 and M2, not a claimed SADP protocol maximum; the Python reference's 1500-byte cap is a compatibility starting point, not an MTU-derived protocol rule.
 - Preserve the sender address supplied by M1 so callers can compare the advertised address with the source of the datagram.
 - Do not assume that syntactically valid XML is a valid SADP advertisement.
+- The captured `<ProbeMatch>` and `<Hello>` demonstrate observed shapes only. Keep unobserved or model-specific fields optional until confirmed with additional device captures.
 
 ## 5. Errors and Diagnostics
 

@@ -7,11 +7,11 @@ Provide a cross-platform boundary for discovering local network interfaces and o
 ## 2. Responsibilities
 
 - Enumerate network interfaces and expose the attributes needed to select an interface for discovery.
-- Open a UDP packet connection configured for the selected interface and SADP multicast settings.
+- Open a UDP packet connection configured for the selected interface and SADP multicast settings. The user-provided HiToolsDelivery capture observes inquiry traffic to `239.255.255.250:37020`; treat that endpoint as the current compatibility target, not a universal protocol guarantee.
 - Isolate operating-system-specific socket options and report unsupported configurations explicitly.
 - Return resources to the caller with a clear ownership contract; the caller closes every successfully opened connection.
 
-The adapter does not send probes, parse advertisements, or implement device-management rules.
+The adapter does not send probes, parse advertisements, orchestrate discovery sessions, or implement device-management rules.
 
 ## 3. Go API Contract
 
@@ -39,7 +39,7 @@ func OpenMulticast(iface Interface, group netip.AddrPort) (net.PacketConn, error
 
 - Exclude loopback and interfaces that are down or lack a usable IPv4 address for the requested operation.
 - Preserve enough interface identity (index and name) to bind traffic to the selected adapter; do not assume a hostname resolves to the correct interface.
-- Enumerate interfaces through Go's `net` package and join `239.255.255.250` on the selected interface, binding the receive socket to UDP port `37020` where supported.
+- Enumerate interfaces through Go's `net` package and join `239.255.255.250` on the selected interface, binding the receive socket to UDP port `37020` where supported. The same endpoint is observed in a HiToolsDelivery capture; it remains a compatibility target pending broader device verification.
 - The Python reference sets multicast TTL to 64. Preserve that value only if required by observed behavior; it does not establish SADP's required TTL or imply that discovery should cross subnets.
 - The Python reference's Unix-like branch binds the group port and joins on the selected interface. Its Windows branch binds an ephemeral local port and omits group membership. This inconsistency is not a target behavior: implement and verify Windows multicast send/receive explicitly, and return an error rather than silently claiming that an unverified socket is configured correctly.
 - Use Go's `net` package for interface enumeration and packet connections. Add platform-specific code only where required by OS socket behavior.
@@ -57,4 +57,4 @@ Atomic contracts are specified in [P0.1 ListInterfaces](../procedures/adapter/ge
 
 ---
 
-*Level 1 module specification. The related procedure documents under `../procedures/adapter/` are separate from this Go module contract.*
+*Level 1 module specification. The related procedure documents under `../procedures/adapter/` are separate from this Go module contract. End-to-end discovery is composed by [M6](./discovery.md).*

@@ -12,9 +12,9 @@ Implement device-management rules for activation and network configuration. The 
 - Keep workflow rules independent of CLI presentation and operating-system-specific socket setup.
 - Return per-device results for bulk operations so failures remain attributable to individual devices.
 
-The exact challenge-response algorithm and wire-level fields must be specified by the corresponding protocol procedures; this module specification does not prescribe an unverified hash algorithm.
+The exact challenge-response algorithm and wire-level fields must be specified by the corresponding protocol procedures; this module specification does not prescribe an unverified hash algorithm. Password policy validation is a pure procedure; parsing a device challenge, submitting commands, and interpreting operation results remain separate workflow boundaries.
 
-M1 currently defines receive APIs only. The XML builders in this module do not provide end-to-end activation or network-configuration operations until a verified send/response transport contract and the corresponding context-aware workflow APIs are specified.
+M1 defines inquiry-probe sending and receive APIs. The XML builders in this module do not provide end-to-end activation or network-configuration operations until a verified send/response transport contract and the corresponding context-aware workflow APIs are specified.
 
 The local Python reference provides a behavioral proposal: it builds `Activate` XML with `TargetMAC`, `Password`, and optional `OptionData/SecurityEmail`; it builds `NetworkParameter` XML with `TargetMAC`, `DHCP`, optional static-address fields, and `SecurityResponse` when a challenge is supplied. It calculates that response as SHA-256 of UTF-8 `password + challenge`. These shapes and calculation are useful for compatibility fixtures but are not authoritative protocol facts until compared with a known-good device exchange.
 
@@ -69,4 +69,4 @@ func BuildNetworkXML(
 
 ---
 
-*Level 1 module specification. The related procedure documents under `../procedures/logic/` are separate from this Go module contract.*
+*Level 1 module specification. See [P3.0 ValidatePassword](../procedures/logic/validate_password.md), [P3.1 BuildActivationXML](../procedures/logic/build_activation.md), [P3.2 BuildNetworkXML](../procedures/logic/build_network.md), and [P3.5 CalculateHash](../procedures/logic/calculate_hash.md). Challenge extraction, activation execution/result parsing, and network-update execution/result parsing are intentionally not specified as executable operations until protocol evidence is available.*

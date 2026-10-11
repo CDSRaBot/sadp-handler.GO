@@ -33,7 +33,7 @@ func BuildNetworkXML(
    - For static configuration, include non-empty `<IPv4Address>`, `<SubnetMask>`, and `<DefaultGateway>` values.
    - Include `<SecurityResponse>` with the calculated response.
 4. Serialize with `encoding/xml`; prepend `xml.Header` because the encoder does not add a declaration automatically. Do not build XML by string formatting.
-5. Keep the result as a payload for the future transport integration; this procedure does not perform network I/O. M1 currently specifies receiving only and has no send API, so network-configuration transmission and response handling remain open protocol gates. Do not describe this builder alone as a completed network-configuration operation.
+5. Keep the result as a payload for the future transport integration; this procedure does not perform network I/O. M1 currently specifies inquiry-probe sending and receiving only; it has no network-configuration command send API, so network-configuration transmission and response handling remain open protocol gates. Do not describe this builder alone as a completed network-configuration operation.
 
 The Python reference conditionally emits each non-empty static-address field. Its missing-challenge branch emits `<Password>` in plaintext; Go must not copy this fallback. The exact XML fields, optional-field rules, and security-response algorithm must be verified against known-good device fixtures before claiming device compatibility.
 

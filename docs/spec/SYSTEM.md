@@ -4,13 +4,13 @@
 
 **SADP-handler** is a terminal-based Go utility for discovering, activating, and configuring Hikvision cameras and NVRs over the Search Active Device Protocol (SADP). Discovery targets devices on the local Layer 2 network, including devices that do not yet have an address usable by the host.
 
-The project has completed its architecture and specification phase. This document defines the system-level boundaries; package APIs and atomic procedures are specified in the linked module and procedure documents.
+The architecture baseline is established and the specifications define system boundaries, module APIs, and atomic procedures. End-to-end device-management operations remain subject to protocol verification.
 
 ## 2. Functional Scope
 
 The system is designed to provide:
 
-1. **Device discovery** — receive SADP advertisements on supported local network interfaces. Probe transmission and the complete request/response flow remain unspecified until verified against device evidence; the current network contract must not imply that discovery probes are already implemented.
+1. **Device discovery** — send the observed SADP inquiry probe and receive advertisements on supported local network interfaces. HiToolsDelivery captures confirm the UDP multicast destination `239.255.255.250:37020`, the XML `<Probe>` request containing `<Uuid>`, `<Types>inquiry</Types>`, and `<ResponseMode>2</ResponseMode>`, a device `<ProbeMatch>` message, and a separate multicast `<Hello>` message containing `<Types>hello</Types>`. The captured probe corresponding to the `ProbeMatch` and any relationship between the probe burst and `Hello` are not established. These captures do not define response correlation, retransmission policy, timing, or variation across models/firmware.
 2. **Device activation** — activate inactive devices, applying password-complexity rules and the required security exchange.
 3. **Network configuration** — configure device IP address, subnet mask, gateway, and DHCP state.
 4. **CLI operation** — expose these workflows to users and automation with structured configuration, output, and logging. The default user-facing mode is a full-screen TUI; `--ui=no` selects standard command-line operation for one-shot use and automation.
@@ -31,9 +31,10 @@ Modules communicate through Go package APIs and explicitly defined Go types. A p
 
 ### [M1: Network Engine](./modules/network.md)
 
-**Role:** manage SADP UDP receive lifecycle; add probe transmission once its payload and response flow are established.
+**Role:** manage SADP UDP probe transmission and receive lifecycle.
 
-- Receive advertisements using Go networking APIs from `net`. The local Python reference does not contain probe transmission, so the probe payload is not defined by this baseline.
+- Build and send the observed inquiry probe over the M0-configured multicast connection, and receive advertisements using Go networking APIs from `net`.
+- Keep the confirmed probe request contract separate from unverified response, correlation, retransmission, and timing behavior.
 - Use goroutines and channels only where concurrency is needed; make listener shutdown and cancellation explicit.
 - Accept `context.Context` for operations that can block, and ensure sockets, goroutines, and other resources are released on completion or cancellation.
 - Pass received payloads to the parser without embedding business rules in the transport layer.
@@ -65,6 +66,26 @@ Modules communicate through Go package APIs and explicitly defined Go types. A p
 - Start in TUI mode by default and select standard command-line mode only when `--ui=no` is supplied; report an actionable error if the default TUI is requested without usable terminal input and output.
 - Keep terminal interaction separate from business logic; do not make a particular CLI library mandatory at the system level.
 
+### [M5: Localization](./modules/localization.md)
+
+**Role:** validate, load, resolve, and switch immutable locale catalogs independently of terminal rendering.
+
+- Use the embedded English catalog as the canonical key set and fallback.
+- Enumerate external locale files and export the English translation template.
+- Install a fully loaded locale as one atomic state change; a failed load leaves the current locale unchanged.
+
+M5 supplies locale services to M4 and does not own command-line parsing or terminal presentation.
+
+### [M6: Discovery Coordinator](./modules/discovery.md)
+
+**Role:** compose interface-specific socket setup, one observed inquiry probe, datagram listening, and advertisement parsing into a cancellable discovery session.
+
+- Operate on one explicitly selected interface per call and report parsed devices or rejected datagrams through a caller handler.
+- Keep socket ownership, cancellation, callback errors, and partial results explicit.
+- Do not infer response correlation, repeat probes, or assign a schedule to unsolicited `Hello` messages without further evidence.
+
+M6 depends on M0, M1, and M2; M4 invokes M6 and presents its events.
+
 ## 4. Data and API Contracts
 
 - Public package APIs use typed Go values rather than unstructured maps.
@@ -80,6 +101,7 @@ Modules communicate through Go package APIs and explicitly defined Go types. A p
 - Follow the project layout: `cmd/` for executable entry points, `internal/` for application and private implementation packages, and `pkg/` only for libraries intentionally reusable outside this module. Add directories such as `config/`, `models/`, or `utils/` only when they represent a clear package responsibility.
 - Repository filesystem paths used in documentation, configuration, and build instructions are relative to the project root. Do not hard-code machine-specific absolute paths.
 - Keep interface enumeration and socket setup in the platform adapter; transport in the network engine; parsing in the parser; device workflows in the logic engine; and presentation in the CLI.
+- Keep discovery orchestration in M6 and locale catalog/state management in M5; neither belongs in the CLI presentation module.
 - Use `context.Context` for cancellable network and I/O operations. Concurrent work must have a defined owner, shutdown path, and error-reporting strategy; avoid goroutine leaks and unbounded resource use.
 - Keep the interface mode fixed for one process invocation. TUI application commands run workflows within the TUI; changing to standard CLI mode requires a separate invocation.
 - Prefer the Go standard library, including `net`, `encoding/xml`, `context`, and `log/slog`. A CLI, configuration, or logging dependency may be selected by implementation, but no optional third-party library is required by this system specification.
@@ -100,10 +122,11 @@ Changes follow the development lifecycle in [`DEVELOPMENT_GUIDE.md`](../DEVELOPM
 
 1. Define the behavior, package boundaries, Go types, and error contract before implementation.
 2. Update this system document when module responsibilities or dependencies change; document package APIs and atomic procedures at their corresponding levels.
-3. Audit data flow, error handling, platform support, serialization, context use, and concurrency before coding.
-4. Derive tests from the specification, including contract, success, negative, timeout, and fuzz tests where appropriate. Place Go tests in `*_test.go` files and use the standard `testing` package.
-5. Validate the implementation with the applicable project checks, including `gofmt`, `go vet ./...`, `go test ./...`, and `go build ./...`. Run configured tools such as `staticcheck` or `golangci-lint` when available.
-6. If implementation changes specified behavior, update the specification and tests together.
+3. When a Russian document links to an English contract, the English document is normative; the Russian copy is a guide and must not contradict it.
+4. Audit data flow, error handling, platform support, serialization, context use, and concurrency before coding.
+5. Derive tests from the specification, including contract, success, negative, timeout, and fuzz tests where appropriate. Place Go tests in `*_test.go` files and use the standard `testing` package.
+6. Validate the implementation with the applicable project checks, including `gofmt`, `go vet ./...`, `go test ./...`, and `go build ./...`. Run configured tools such as `staticcheck` or `golangci-lint` when available.
+7. If implementation changes specified behavior, update the specification and tests together.
 
 ## 8. Python Reference and Protocol Compatibility Gates
 
@@ -120,8 +143,14 @@ This is an implementation reference, not an authoritative SADP protocol specific
 
 Accordingly, the reference behavior above may guide implementation and fixture design, but must not be presented as an independently verified protocol guarantee. Keep these gates open before claiming compatibility beyond the locally referenced behavior:
 
-- Establish the actual probe/response flow and supported SADP variants from runnable end-to-end behavior or reproducible device captures.
-- Define and verify the transport contract for activation and network-configuration payloads: destination, send behavior, reply flow/correlation, timeout, cancellation, and per-device outcome mapping. M1 currently specifies receiving only; M3 XML builders alone do not constitute an executable operation.
+- The user-provided HiToolsDelivery captures show requests sent to UDP multicast `239.255.255.250:37020` with XML `Probe` elements `Uuid`, `Types=inquiry`, and `ResponseMode=2`. Twelve request entries contain six UUID values, each appearing twice; this repetition is an observation, not a retry requirement.
+- A subsequent capture contains a 1,382-byte XML `ProbeMatch` response for a DS-2CD1021-I. Its direct-child fields include `Uuid`, `Types=inquiry`, device description and serial fields, command/HTTP ports, MAC and IPv4/IPv6 network fields, DHCP and channel counts, software/DSP versions, boot time, activation/security capability fields, a `Salt`, and lock/reset-related fields. The response UUID agrees between the displayed response records. The corresponding request payload is not included with this response capture, so equality with the probe UUID is not verified.
+- The response capture shows an exchange entry between `192.168.0.128` and `192.168.0.160` on UDP port `37020`, and a device-originated datagram from `192.168.0.160:37020` to `239.255.255.250:37020`, with the same displayed `ProbeMatch` payload. Preserve these as observed records without inferring universal unicast/multicast delivery behavior.
+- Another capture contains fourteen `Probe` XML documents: seven distinct UUID values, each appearing twice, in multicast traffic to `239.255.255.250:37020`. This is consistent with repeated transmissions in this capture but does not establish required retry behavior, pairing semantics, cadence, or whether UUID reuse is required.
+- The same later capture contains a 1,319-byte device-originated UDP datagram from `192.168.0.160:37020` to `239.255.255.250:37020`, with root `<Hello>`, `<Types>hello</Types>`, and device-information fields overlapping the observed `ProbeMatch`. It has no displayed UUID and appears after the displayed probe burst; the capture does not establish that it is a reply to that burst or define its announcement schedule.
+- Do not store sample MAC addresses, serial numbers, UUIDs, or salt values in specifications or fixtures. Treat security-related response fields as sensitive and never log full response XML.
+- Verify `ProbeMatch`/`Hello` variants and correlation behavior across additional devices/firmware before making fields mandatory or defining retries, timing, or a universal response-delivery contract.
+- Define and verify the transport contract for activation and network-configuration payloads: destination, send behavior, reply flow/correlation, timeout, cancellation, and per-device outcome mapping. M1 currently specifies inquiry-probe sending and receiving only; it does not define transmission of activation or network-configuration commands. M3 XML builders alone do not constitute an executable operation.
 - Confirm activation and network-configuration XML fields, challenge acquisition/correlation, and the SHA-256 input/encoding against known-good device exchanges. Do not assume the Python helper's SHA-256 expression is universally valid across models and firmware.
 - Use 1500 bytes only as an explicitly named compatibility/resource bound if chosen; it is not a verified protocol limit. M1 and M2 must use one shared bound and the receiver must detect/reject truncation and oversize datagrams.
 - Verify per-interface UDP multicast behavior and cancellation/cleanup on each supported OS. In particular, do not reproduce the Python Windows branch without evidence that it receives the intended SADP replies.
