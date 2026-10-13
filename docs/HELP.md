@@ -1,8 +1,10 @@
-# SADP-handler — справка по командам
+# SADP-handler — Command Help
 
-Документ описывает пользовательские команды и параметры, согласованные в спецификациях проекта. Go-реализация приложения пока не начата. Команды `activate` и `network` остаются закрытыми protocol gate и до проверки протокола должны завершаться явной ошибкой без чтения пароля и без сетевых действий.
+[Русская версия](ru/HELP.md)
 
-## Запуск приложения
+This document describes the user commands and options defined by the project specifications. The Go implementation has not started yet. The `activate` and `network` commands remain behind the protocol gate and must fail explicitly without reading passwords or performing network operations until the protocol has been verified.
+
+## Starting the application
 
 ```text
 sadp-handler [--ui=yes|no] [--lang CODE] [--format text|json]
@@ -10,16 +12,16 @@ sadp-handler --ui=no [--lang CODE] [--format text|json]
 sadp-handler --ui=no [--lang CODE] [--format text|json] --once COMMAND [ARGS...]
 ```
 
-- `--ui=yes|no` — выбрать интерфейс. По умолчанию `yes`: полноэкранный TUI. Значение `no` запускает CLI REPL.
-- `--once` — выполнить ровно одну команду из аргументов и завершить процесс. Допустим только с `--ui=no`. Без `--once` переданные при запуске аргументы команды не исполняются: для CLI запускается REPL, а лишние позиционные аргументы при старте отклоняются.
-- `--lang CODE` — выбрать язык приложения на время запуска; доступные коды показывает `language list`. Параметр переопределяет язык из настроек.
-- `--format text|json` — формат результатов CLI для всего процесса; по умолчанию `text`. В JSON-режиме каждая выполненная команда выводит один JSON-объект в stdout, а приглашение REPL и диагностические сообщения направляются в stderr. Опция применима к REPL и one-shot CLI.
+- `--ui=yes|no` selects the interface. The default is `yes`, which starts the full-screen TUI. `no` starts the CLI REPL.
+- `--once` runs exactly one command from process arguments and exits. It is valid only with `--ui=no`. Without `--once`, command arguments supplied at startup are not executed: CLI starts the REPL, and extra positional startup arguments are rejected.
+- `--lang CODE` selects the application language for this invocation; `language list` shows available locale codes. This option overrides the language from settings.
+- `--format text|json` selects the output format for all CLI results in the process. The default is `text`. In JSON mode, each completed command writes one JSON object to stdout; the REPL prompt and diagnostic messages go to stderr. This option applies to both REPL and one-shot CLI.
 
-TUI требует терминалы для ввода и вывода. CLI REPL требует терминальный stdin, но допускает перенаправленный stdout. One-shot режим допускает перенаправление потоков.
+The TUI requires terminal input and output. The CLI REPL requires terminal stdin but permits redirected stdout. One-shot mode permits redirected streams.
 
-## Команды CLI
+## CLI commands
 
-В CLI REPL вводите команду после приглашения. Для выполнения из аргументов запуска используйте `--ui=no --once`.
+Enter commands at the CLI REPL prompt. To execute a command from process arguments, use `--ui=no --once`.
 
 ### `discover`
 
@@ -27,13 +29,13 @@ TUI требует терминалы для ввода и вывода. CLI REP
 discover --interface INDEX --timeout DURATION [--repeat COUNT]
 ```
 
-Найти SADP-устройства на выбранном сетевом интерфейсе.
+Discover SADP devices through the selected network interface.
 
-- `--interface INDEX` — обязательный индекс подходящего интерфейса.
-- `--timeout DURATION` — обязательная положительная длительность каждого цикла приёма, например `5s`.
-- `--repeat COUNT` — число циклов от `1` до `100`; по умолчанию `1`.
+- `--interface INDEX` is the required index of an eligible network interface.
+- `--timeout DURATION` is the required positive receive-window duration for each cycle, for example `5s`.
+- `--repeat COUNT` is the number of cycles, from `1` to `100`; the default is `1`.
 
-Каждый цикл немедленно отправляет один inquiry probe и затем принимает объявления в течение всего `--timeout`. Получение устройства не завершает цикл досрочно. Результат — список устройств; повторные объявления объединяются по нормализованному MAC и адресу отправителя. Пустой список является успешным результатом.
+Each cycle sends one inquiry probe immediately, then receives advertisements for the full `--timeout`. Receiving a device does not end a cycle early. The result is a device list; repeated advertisements are aggregated by normalized MAC address and sender address. An empty list is a successful result.
 
 ```text
 discover --interface 4 --timeout 5s
@@ -46,14 +48,14 @@ discover --interface 4 --timeout 3s --repeat 5
 activate --device MAC [--device MAC ...] --password-stdin [--email EMAIL] [--yes]
 ```
 
-Запросить активацию одного или нескольких устройств.
+Request activation of one or more devices.
 
-- `--device MAC` — целевой MAC-адрес формата EUI-48; параметр можно повторять. Дубликаты после нормализации отклоняются.
-- `--password-stdin` — указать stdin как источник пароля. В REPL ввод должен выполняться без отображения символов; в one-shot читается одна строка. Пароль не передаётся аргументом команды.
-- `--email EMAIL` — необязательный адрес электронной почты для операции активации.
-- `--yes` — обязательное подтверждение при указании двух или более устройств.
+- `--device MAC` specifies a target EUI-48 MAC address. This option may be repeated; duplicates after normalization are rejected.
+- `--password-stdin` selects stdin as the password source. In the REPL, input must not echo characters; in one-shot mode, one line is read. Do not pass the password as a command argument.
+- `--email EMAIL` is an optional email address for the activation operation.
+- `--yes` is required when two or more devices are specified.
 
-Пока protocol gate активен, команда завершается с ошибкой `unsupported` до чтения stdin, запроса секрета или сетевого обращения.
+While the protocol gate is active, this command returns an `unsupported` error before reading stdin, prompting for a secret, or performing network operations.
 
 ### `network`
 
@@ -61,17 +63,17 @@ activate --device MAC [--device MAC ...] --password-stdin [--email EMAIL] [--yes
 network --device MAC [--device MAC ...] --password-stdin (--dhcp | --address IPv4/PREFIX [--gateway IPv4]) [--yes]
 ```
 
-Запросить настройку сетевых параметров одного или нескольких устройств.
+Request network configuration for one or more devices.
 
-- `--device MAC` — целевой MAC-адрес EUI-48; параметр можно повторять, но нельзя дублировать после нормализации.
-- `--password-stdin` — источник пароля; пароль не должен передаваться в аргументах команды.
-- Ровно один из параметров `--dhcp` и `--address` обязателен.
-- `--dhcp` — включить DHCP; совместно с `--address` или `--gateway` не используется.
-- `--address IPv4/PREFIX` — статический IPv4-адрес с длиной префикса, например `192.168.1.20/24`.
-- `--gateway IPv4` — необязательный шлюз для статической конфигурации; разрешён только вместе с `--address`.
-- `--yes` — обязательное подтверждение для двух и более целевых устройств.
+- `--device MAC` specifies a target EUI-48 MAC address. The option may be repeated, but normalized duplicates are rejected.
+- `--password-stdin` selects the password source; never pass the password in command arguments.
+- Exactly one of `--dhcp` and `--address` is required.
+- `--dhcp` enables DHCP and cannot be combined with `--address` or `--gateway`.
+- `--address IPv4/PREFIX` specifies a static IPv4 address and prefix length, for example `192.168.1.20/24`.
+- `--gateway IPv4` optionally specifies the gateway for a static configuration; it is allowed only with `--address`.
+- `--yes` is required for two or more target devices.
 
-Пока protocol gate активен, команда завершается с ошибкой `unsupported` до чтения stdin, запроса секрета или сетевого обращения.
+While the protocol gate is active, this command returns an `unsupported` error before reading stdin, prompting for a secret, or performing network operations.
 
 ### `language`
 
@@ -80,20 +82,20 @@ language list
 language CODE
 ```
 
-- `language list` — вывести список доступных локалей.
-- `language CODE` — переключить язык текущего процесса на точную локаль. Изменение не сохраняется в настройках; в one-shot оно действует только до завершения команды.
+- `language list` displays available locales.
+- `language CODE` switches the current process to the exact locale. The change is not saved to settings; in one-shot mode it lasts only for that invocation.
 
 ### `help`
 
-Вывести краткую справку по каталогу команд.
+Display brief help for the command catalog.
 
 ### `version`
 
-Показать версию и идентификатор сборки приложения.
+Display the application version and build identifier.
 
 ### `quit`
 
-Завершить CLI REPL и отменить принадлежащие ему фоновые операции. В one-shot это допустимая успешная команда без дополнительного действия.
+Exit the CLI REPL and cancel background work owned by it. In one-shot mode, this is a valid successful command with no additional action.
 
 ### `--export-locale-template PATH`
 
@@ -101,11 +103,11 @@ language CODE
 --export-locale-template PATH
 ```
 
-Экспортировать шаблон локали на основе встроенного английского каталога. Команда самостоятельная и не комбинируется с другими командами. Существующий файл не перезаписывается.
+Export a locale template from the embedded English catalog. This is a standalone command and cannot be combined with other commands. An existing file is not overwritten.
 
-## Команды TUI
+## TUI commands
 
-TUI запускается по умолчанию. Его командная консоль принимает ту же предметную команду, но использует отдельную, более короткую грамматику:
+The TUI starts by default. Its command console accepts the same application commands but uses a separate, shorter grammar:
 
 ```text
 discover [INTERFACE-INDEX]
@@ -119,12 +121,12 @@ quit
 --export-locale-template PATH
 ```
 
-- `discover` без индекса использует явно выбранный в TUI интерфейс; с индексом — указанный интерфейс. TUI отправляет первый probe сразу, затем новый probe каждые 60 секунд, продолжая принимать объявления до отмены.
-- Для `activate` и `network` MAC необязателен: без него выбираются отмеченные устройства, либо сфокусированное устройство, если выделения нет. До начала операции TUI должен показать цели и запросить подтверждение пакетного изменения.
-- Кавычки и shell-синтаксис не поддерживаются: ввод разделяется по пробелам. Консоль не запускает shell.
+- If `discover` has no index, it uses the interface explicitly selected in the TUI; otherwise it uses the specified interface. The TUI sends the first probe immediately, then sends another every 60 seconds while continuing to receive advertisements until canceled.
+- For `activate` and `network`, MAC is optional: without it, the selected devices are targeted, or the focused device if none are selected. Before a bulk operation, the TUI must show the targets and request confirmation.
+- Quoting and shell syntax are not supported; input is split on whitespace. The console never invokes a shell.
 
-## Завершение процесса и ошибки
+## Process exit and errors
 
-- Коды завершения CLI: `0` — успех (включая `quit`), `1` — ошибка команды или операции, `2` — неверный запуск/аргументы, `130` — прерывание one-shot через Ctrl+C.
-- В REPL ошибка команды не завершает процесс; EOF завершает REPL штатно, Ctrl+C отменяет активную команду и возвращает приглашение.
-- Команды не должны сохранять или отображать пароли, challenge, производные секреты или необработанные XML-данные.
+- CLI exit codes: `0` — success (including `quit`), `1` — command or operational failure, `2` — invalid invocation/arguments, `130` — one-shot interrupted with Ctrl+C.
+- In the REPL, a command error does not terminate the process. EOF exits the REPL cleanly; Ctrl+C cancels the active command and returns to the prompt.
+- Commands must not store or display passwords, challenges, derived secrets, or raw XML data.

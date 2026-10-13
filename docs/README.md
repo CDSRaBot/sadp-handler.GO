@@ -6,6 +6,7 @@ The repository currently contains design documentation; Go implementation has no
 
 ## Documentation
 
+- [Command help (English)](./HELP.md)
 - [Development lifecycle guide](./DEVELOPMENT_GUIDE.md)
 - [System specification](./spec/SYSTEM.md)
 - [Module specifications](./spec/modules/)
@@ -22,6 +23,7 @@ The repository currently contains design documentation; Go implementation has no
 
 ## Документация
 
+- [Справка по командам](./ru/HELP.md)
 - [Руководство по циклу разработки](./DEVELOPMENT_GUIDE.md)
 - [Системная спецификация](./spec/SYSTEM.md)
 - [Спецификации модулей](./spec/modules/)
