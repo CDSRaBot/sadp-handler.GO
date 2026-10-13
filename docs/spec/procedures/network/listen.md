@@ -16,6 +16,7 @@ func Listen(ctx context.Context, conn net.PacketConn, handle PacketHandler) erro
 - Preserve connection-close failures in the returned error, joined with the primary failure where necessary; normal cancellation returns nil only if cleanup succeeds.
 - Return nil for normal context cancellation. Return an error for unexpected read or handler failures; do not report failure as success.
 - The handler must not retain or mutate the received byte slice after returning unless it copies it.
+- In an M6 session, one M1 `SendInquiryProbe` writer may use the transferred connection concurrently with this reader. Writes are serialized by M6; no other reader/writer is permitted. On orderly shutdown M6 stops and joins its writer before canceling the listener context, allowing `Listen` to close the connection afterward. On a listener/handler failure, `Listen` may close while one write is completing; M6 must join that writer and preserve any resulting write error alongside the listener error.
 
 ## 3. Processing Requirements
 

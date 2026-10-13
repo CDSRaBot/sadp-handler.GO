@@ -13,7 +13,7 @@ The system is designed to provide:
 1. **Device discovery** — send the observed SADP inquiry probe and receive advertisements on supported local network interfaces. HiToolsDelivery captures confirm the UDP multicast destination `239.255.255.250:37020`, the XML `<Probe>` request containing `<Uuid>`, `<Types>inquiry</Types>`, and `<ResponseMode>2</ResponseMode>`, a device `<ProbeMatch>` message, and a separate multicast `<Hello>` message containing `<Types>hello</Types>`. The captured probe corresponding to the `ProbeMatch` and any relationship between the probe burst and `Hello` are not established. These captures do not define response correlation, retransmission policy, timing, or variation across models/firmware.
 2. **Device activation** — activate inactive devices, applying password-complexity rules and the required security exchange.
 3. **Network configuration** — configure device IP address, subnet mask, gateway, and DHCP state.
-4. **CLI operation** — expose these workflows to users and automation with structured configuration, output, and logging. The default user-facing mode is a full-screen TUI; `--ui=no` selects standard command-line operation for one-shot use and automation.
+4. **CLI operation** — expose these workflows to users and automation with a shared command catalog and typed results. The default user-facing mode is a full-screen TUI; `--ui=no` starts an interactive CLI REPL, and `--ui=no --once` runs one command from process arguments and exits.
 
 These are target capabilities, not a claim that end-to-end device operations are currently specified or implemented. Bulk activation and network configuration must report per-device outcomes so a failure for one device does not conceal the result for others. The current module contracts do not yet define transmission of these requests or a complete response/correlation workflow.
 
@@ -65,6 +65,7 @@ Modules communicate through Go package APIs and explicitly defined Go types. A p
 - Present discovery results and operation outcomes, including errors and partial results.
 - Start in TUI mode by default and select standard command-line mode only when `--ui=no` is supplied; report an actionable error if the default TUI is requested without usable terminal input and output.
 - Keep terminal interaction separate from business logic; do not make a particular CLI library mandatory at the system level.
+- Use separate TUI/CLI parsers that map into a shared typed command model and dispatcher; `--ui=no` selects the REPL and `--once` selects one-shot execution.
 
 ### [M5: Localization](./modules/localization.md)
 
@@ -78,11 +79,11 @@ M5 supplies locale services to M4 and does not own command-line parsing or termi
 
 ### [M6: Discovery Coordinator](./modules/discovery.md)
 
-**Role:** compose interface-specific socket setup, one observed inquiry probe, datagram listening, and advertisement parsing into a cancellable discovery session.
+**Role:** compose interface-specific socket setup, scheduled sends of the observed inquiry probe, datagram listening, and advertisement parsing into a cancellable discovery session.
 
 - Operate on one explicitly selected interface per call and report parsed devices or rejected datagrams through a caller handler.
 - Keep socket ownership, cancellation, callback errors, and partial results explicit.
-- Do not infer response correlation, repeat probes, or assign a schedule to unsolicited `Hello` messages without further evidence.
+- Do not infer response correlation or protocol retry requirements from the application-scheduled probes, or assign a schedule to unsolicited `Hello` messages.
 
 M6 depends on M0, M1, and M2; M4 invokes M6 and presents its events.
 
@@ -104,6 +105,8 @@ M6 depends on M0, M1, and M2; M4 invokes M6 and presents its events.
 - Keep discovery orchestration in M6 and locale catalog/state management in M5; neither belongs in the CLI presentation module.
 - Use `context.Context` for cancellable network and I/O operations. Concurrent work must have a defined owner, shutdown path, and error-reporting strategy; avoid goroutine leaks and unbounded resource use.
 - Keep the interface mode fixed for one process invocation. TUI application commands run workflows within the TUI; changing to standard CLI mode requires a separate invocation.
+- In CLI mode, use the REPL unless `--once` is explicitly supplied; never infer one-shot execution merely because command arguments are present.
+- The TUI owns at most one continuous discovery session. Interface changes stop and join the prior session before starting another.
 - Prefer the Go standard library, including `net`, `encoding/xml`, `context`, and `log/slog`. A CLI, configuration, or logging dependency may be selected by implementation, but no optional third-party library is required by this system specification.
 - Keep source comments and public Go documentation in English. Document exported types and functions, and add implementation comments only when they clarify non-obvious behavior.
 

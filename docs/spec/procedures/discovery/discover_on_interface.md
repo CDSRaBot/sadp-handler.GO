@@ -3,38 +3,50 @@
 
 ## 1. Purpose
 
-Run one discovery session on a selected interface by composing socket setup, one inquiry probe, receive dispatch, and advertisement parsing.
+Run one cancellable discovery session on one selected interface, with either continuous scheduled probes or a bounded number of timeout-limited receive cycles.
 
 ## 2. Go Contract
 
 ```go
+type DiscoveryOptions struct {
+    ProbeInterval time.Duration
+    CycleTimeout  time.Duration
+    RepeatCount   int
+}
+
 func DiscoverOnInterface(
     ctx context.Context,
     iface adapter.Interface,
+    options DiscoveryOptions,
     handle EventHandler,
 ) error
 ```
 
-- Reject nil context or handler and an ineligible interface before network activity.
-- Run until the context is canceled or an unexpected operation/callback error occurs.
-- Return nil only for normal context cancellation when all owned resources close successfully. Preserve close failures with the primary error.
-- The handler receives either a valid `DeviceFound` event or a `DatagramRejected` event. It must not retain mutable data owned by the coordinator.
+- Reject nil context/handler, an ineligible interface, and invalid or mixed options before network activity.
+- Continuous mode is valid only when `ProbeInterval > 0`, `CycleTimeout == 0`, and `RepeatCount == 0`.
+- Bounded mode is valid only when `ProbeInterval == 0`, `CycleTimeout > 0`, and `RepeatCount` is in `1..100`.
+- Return nil on normal external cancellation after successful cleanup, or on completion of all bounded cycles and successful cleanup. Return socket, sender, listener, handler, or cleanup failures with stage context; preserve underlying causes.
+- Each received packet produces either a validated `DeviceFound` event or a `DatagramRejected` event. Preserve its sender and record an `ObservedAt` timestamp. Keep raw event delivery distinct from presentation deduplication.
 
-## 3. Processing Requirements
+## 3. Session Lifecycle
 
-1. Open one connection with M0 `OpenMulticast` for `239.255.255.250:37020`. If opening fails, return a wrapped error.
-2. Send one M1 `SendInquiryProbe` datagram. If sending fails, close the caller-owned connection and return the send error joined with any close error.
-3. After a successful send, transfer connection ownership to M1 `Listen`; do not close or reuse the connection independently after transfer.
-4. For each received datagram, call M2 `ParseAdvertisement` with its sender. If parsing fails, send a `DatagramRejected` event containing sender and a sanitized parse error, then continue if the callback succeeds.
-5. For each parsed advertisement, send a `DeviceFound` event. A callback error is fatal and is returned by the session.
-6. Do not deduplicate advertisements, correlate UUIDs, retransmit the probe, stop on a `Hello`, or infer an announcement schedule. The caller controls the session lifetime by canceling `ctx`.
-7. Do not log raw datagrams, full XML, device identifiers, passwords, or values such as `Salt`.
+1. Open one connection through M0 for `239.255.255.250:37020`.
+2. Send the first probe immediately with M1 `SendInquiryProbe`. If it fails, close the connection and return the send error joined with any close error.
+3. Start M1 `Listen` on that connection with a subordinate listener context. After transfer, `Listen` owns closing it; M6 owns session coordination and scheduled writes. Require exactly one reader and one serialized writer on the `net.PacketConn`; no other component may use it.
+4. In continuous mode, schedule another probe every `ProbeInterval`, measured from completion of the preceding scheduled send. Keep receiving between and during sends until external cancellation.
+5. In bounded mode, start a receive timer after each successful probe. Do not stop a cycle early when a device is received. After the full `CycleTimeout`, send the next probe immediately if cycles remain; after the last full receive window, cancel the listener and return.
+6. On every datagram, invoke M2 `ParseAdvertisement` with its sender. On parse/validation error, emit a sanitized `DatagramRejected` event and continue if the handler succeeds. Emit `DeviceFound` for every valid packet.
+7. A scheduled send failure cancels the session and is returned. On external cancellation or normal bounded completion, stop and join the scheduler before canceling the listener context; then wait for `Listen` to close the connection and finish cleanup. If a listener/handler failure occurs first, `Listen` may close the connection while one serialized write is completing; stop and join the scheduler, preserve both primary and concurrent write/close failures, and do not hide the original failure. Classify only errors caused by session cancellation as shutdown, never as a successful sent probe.
 
-## 4. Errors and Tests
+The probe cadence, receive-window length, and repeat count are application policy, not asserted SADP timing/retry requirements. Do not correlate UUIDs, infer reply ownership, or treat `Hello` as caused by a probe.
 
-Errors identify the stage (validation, socket open, probe send, receive, parsing callback, device callback, cleanup) while preserving wrapped causes. A malformed device packet is an event, not a fatal session error, unless the event handler returns an error.
+## 4. Discovery Result Aggregation
 
-Test dependency-injected open/send/listen/parser behavior using an unexported dependency bundle or equivalent function seams; the exported API must not expose test hooks and implementation must not rely on mutable package globals. Verify that send occurs once, successful send precedes ownership transfer, open/send failures clean up, cancellation closes once, rejected datagrams do not stop subsequent valid events, both observed root variants are emitted as devices, handler failures terminate, and close errors are preserved. Do not require live devices or a multicast-capable test host.
+P6.1 emits every validated advertisement event and does not deduplicate at the protocol-event boundary. P4.5's application collector maintains the visible inventory keyed by normalized `(MAC, sender network address)`, updates the latest validated fields and last-seen time on repeats, and returns CLI snapshots sorted by MAC then sender. This key is a UI/application identity only.
+
+## 5. Errors and Tests
+
+Inject open/send/listen/parser dependencies through an unexported dependency bundle or equivalent function seams; do not expose test hooks or use mutable package globals. Test option validation, send/listen ordering, connection cleanup on open/first-send failure, immediate and periodic schedules, exact bounded cycle count and window length, receive continuity during scheduled writes, cancellation and goroutine joining, concurrent write/close failure propagation, parse-error events followed by continued reception, valid `ProbeMatch` and `Hello` event delivery, callback failure, sender/timestamp preservation, and redaction/no-payload logging. Tests must not require live devices or multicast access.
 
 ---
 

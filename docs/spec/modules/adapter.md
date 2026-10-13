@@ -32,6 +32,7 @@ func OpenMulticast(iface Interface, group netip.AddrPort) (net.PacketConn, error
 
 - `ListInterfaces` returns eligible interfaces and an error if enumeration fails. An empty result is valid when no eligible interface exists.
 - `OpenMulticast` validates its arguments and returns a connection configured to send and receive SADP UDP traffic on the requested interface. On error, it returns no usable connection.
+- The returned connection supports one concurrent reader and one serialized writer for M6's persistent receive loop and scheduled probe sends, and remains bound to the selected interface for both directions.
 - The caller owns the returned `net.PacketConn` until it transfers ownership to M1 `Listen`; if it does not pass the connection to `Listen`, it must close it. `Listen` closes a transferred connection on all return paths.
 - Returned data uses Go networking types from `net` and `net/netip`; callers must not rely on OS-specific adapter names or socket internals for portable behavior.
 

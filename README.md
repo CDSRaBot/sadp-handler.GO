@@ -17,6 +17,7 @@ The repository currently contains design documentation; Go implementation has no
 
 ## Documentation
 
+- [Command help](./docs/HELP.md)
 - [Development lifecycle guide](./docs/DEVELOPMENT_GUIDE.md)
 - [System specification](./docs/spec/SYSTEM.md)
 - [Module specifications](./docs/spec/modules/)
