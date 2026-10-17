@@ -38,7 +38,7 @@ app [--lang CODE] [--format text|json] --ui=no --once COMMAND [COMMAND OPTIONS]
 ```text
 discover --interface INDEX --timeout DURATION [--repeat COUNT]
 activate --device MAC [--device MAC ...] --password-stdin [--email EMAIL] [--yes]
-network --device MAC [--device MAC ...] --password-stdin (--dhcp | --address IPv4/PREFIX [--gateway IPv4]) [--yes]
+network --device MAC [--device MAC ...] --password-stdin (--dhcp | --address IPv4/PREFIX --gateway IPv4) [--yes]
 language list
 language CODE
 help
@@ -49,12 +49,12 @@ quit
 
 - `discover` requires one eligible interface index and an explicit positive finite `--timeout` for each receive cycle. `--repeat` is an integer in `1..100` and defaults to `1`. Each cycle sends one probe immediately, receives continuously for its timeout, and starts the next cycle immediately after the preceding receive window. Receiving a device does not end a cycle. The total run is bounded by approximately `timeout × repeat` plus setup/cleanup overhead.
 - `activate` and `network` accept one or more repeatable `--device MAC` options. Each MAC must be a valid six-byte EUI-48 address; reject duplicates after normalization. Require `--yes` when there are two or more target MACs. With one target, no confirmation prompt is issued in one-shot mode.
-- `--password-stdin` marks standard input as the password source. In the REPL, read it with terminal echo disabled; in one-shot mode, read one password line from stdin, including when stdin is redirected. Do not read the password while these workflows are behind the protocol gate; after they become supported, read the secret only after command, target, and confirmation validation. Never accept passwords in an ordinary option value, command argument, environment variable, rendered history, or diagnostic.
-- Network configuration requires exactly one of `--dhcp` and `--address`; `--gateway` is allowed only with `--address`. CIDR defines the address and prefix.
+- `--password-stdin` marks standard input as the password source. In the REPL, read it with terminal echo disabled; in one-shot mode, read one password line from stdin, including when stdin is redirected. Do not read the password while these workflows are behind the implementation gate; after they become supported, read the secret only after command, target, and confirmation validation. Never accept passwords in an ordinary option value, command argument, environment variable, rendered history, or diagnostic.
+- Network configuration requires exactly one of `--dhcp` and `--address`. Static `--address` requires `--gateway`; `--gateway` is forbidden with `--dhcp`. CIDR defines the address and prefix.
 - `language list` returns locale identifiers from M5. `language CODE` requests an exact runtime locale switch in the current process and does not persist the selection; in one-shot mode it affects only that invocation.
 - `help` returns the documented command catalog. `version` returns the application version/build identifier. `quit` is accepted in both modes as specified above.
 - `--export-locale-template PATH` is a standalone command form mutually exclusive with all other commands and uses M5 `ExportLocaleTemplate`.
-- `activate` and `network` remain present in the command catalog, but currently return a protocol-gate failure before reading secrets or doing network I/O until challenge acquisition, command transport, response interpretation, and cancellation behavior are verified and specified.
+- `activate` and `network` remain present in the command catalog but return an `unsupported` failure before reading secrets or doing network I/O until their end-to-end workflows, device-result interpretation, and cancellation behavior are implemented. This is an implementation gate, not a claim that the accepted SADP activation XML or challenge-response calculation remains unverified.
 - The user-facing command synopsis and argument descriptions are maintained in [`docs/HELP.md`](../../../HELP.md); keep it synchronized with this grammar and P4.3.
 
 ## 5. REPL Tokenization

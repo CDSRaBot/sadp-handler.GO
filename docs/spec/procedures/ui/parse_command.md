@@ -38,9 +38,9 @@ export-locale-template = "--export-locale-template" path
 - `device-mac` is a six-byte EUI-48 MAC accepted by M2 `NormalizeMAC`. If supplied, it is the sole target. If omitted, dispatch uses the current multi-selection, or the focused device when the selection is empty; an empty target set is an actionable error.
 - `language list` displays available locales. `language CODE` requests an exact runtime locale switch through M5.
 - `--export-locale-template PATH` exports the M5 locale template and is mutually exclusive with every other command.
-- `activate` and `network` construct typed intents for the common dispatcher. While the protocol gate is active, return an explicit unsupported result before opening a form, prompting for a secret, reading input, or starting network work. Once supported, collect credentials only through masked UI input; passwords, challenges, and derived secrets are never accepted in the command line.
+- `activate` and `network` construct typed intents for the common dispatcher. Until their end-to-end workflows are implemented, return an explicit unsupported result before opening a form, prompting for a secret, reading input, or starting network work. This is an implementation gate, not an unverified-protocol claim. Once supported, collect credentials only through masked UI input; passwords, challenges, and derived secrets are never accepted in the command line.
 - `help` lists the shared command catalog. `version` shows the application version/build identifier. `quit` cancels owned workflows and exits the TUI cleanly.
-- Commands requiring activation or network protocol behavior must return an explicit unsupported/protocol-gate error until M3 defines and implements that operation.
+- Activation and network commands return an explicit `unsupported` error until their end-to-end workflows are implemented. This implementation gate does not mean the selected MAC-addressed SADP activation variant or confirmed challenge-response calculation is unverified.
 - After syntax and target validation, dispatch the typed command through P4.5. Parsing does not perform target lookup, show forms, collect secrets, or execute operations.
 
 ## 4. Errors and Tests

@@ -2,12 +2,12 @@
 
 ## 1. Purpose
 
-Provide a cross-platform boundary for discovering local network interfaces and opening the UDP connection used by the SADP network engine. The Python reference uses UDP multicast at `239.255.255.250:37020`; this is the compatibility target for the initial Go implementation, not an authoritative protocol guarantee. Raw Ethernet SADP is outside this adapter contract unless device evidence requires it.
+Provide a cross-platform boundary for discovering local network interfaces and opening the UDP connection used by the SADP network engine. The working Python discovery implementation has been verified on real devices; its interface-specific UDP behavior is the compatibility reference for Go. The observed endpoint `239.255.255.250:37020` is part of the current compatibility baseline, not a universal protocol guarantee. Raw Ethernet SADP is outside this adapter contract unless device evidence requires it.
 
 ## 2. Responsibilities
 
 - Enumerate network interfaces and expose the attributes needed to select an interface for discovery.
-- Open a UDP packet connection configured for the selected interface and SADP multicast settings. The user-provided HiToolsDelivery capture observes inquiry traffic to `239.255.255.250:37020`; treat that endpoint as the current compatibility target, not a universal protocol guarantee.
+- Open a UDP packet connection configured for the selected interface and SADP multicast settings, matching the working Python discovery behavior. The endpoint `239.255.255.250:37020` is the current compatibility target, not a universal protocol guarantee.
 - Isolate operating-system-specific socket options and report unsupported configurations explicitly.
 - Return resources to the caller with a clear ownership contract; the caller closes every successfully opened connection.
 
@@ -25,6 +25,22 @@ type Interface struct {
     IPv4Addrs    []netip.Prefix
     Flags        net.Flags
 }
+
+type AdapterErrorKind string
+
+const (
+    AdapterInvalidInterface    AdapterErrorKind = "invalid_interface"
+    AdapterPermissionDenied    AdapterErrorKind = "permission_denied"
+    AdapterUnsupportedPlatform AdapterErrorKind = "unsupported_platform"
+)
+
+type AdapterError struct {
+    Kind AdapterErrorKind
+    Err  error
+}
+
+func (e *AdapterError) Error() string
+func (e *AdapterError) Unwrap() error
 
 func ListInterfaces() ([]Interface, error)
 func OpenMulticast(iface Interface, group netip.AddrPort) (net.PacketConn, error)
@@ -51,6 +67,7 @@ func OpenMulticast(iface Interface, group netip.AddrPort) (net.PacketConn, error
 
 - Validate the interface and multicast group before opening a socket.
 - Wrap system errors with enough context to identify the operation and interface while preserving the underlying error for inspection.
+- Expose `AdapterError{Kind, Err}` for failures callers classify. Stable kinds are `invalid_interface`, `permission_denied`, and `unsupported_platform`; preserve underlying causes with `Unwrap`. A successful empty `ListInterfaces` result is not an error.
 - Close partially initialized sockets if setup fails.
 - Do not use `panic` for ordinary enumeration or socket failures.
 

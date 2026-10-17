@@ -4,9 +4,12 @@
 
 Compose M0 interface-specific multicast setup, M1 inquiry transmission and packet reception, and M2 advertisement parsing into one cancellable discovery session.
 
+The Python implementation has been verified with real devices: it discovers devices and receives their responses. This end-to-end behavior is the acceptance baseline for the Go discovery flow; Go compatibility must be confirmed against the same device scenario.
+
 ## 2. Responsibilities
 
 - Run one discovery session on one explicitly selected interface.
+- Preserve the working Python discovery behavior, including successful device discovery and response reception, while making the Go transport lifecycle and errors explicit.
 - Keep one SADP multicast connection open while sending inquiry probes and continuously receiving/parsing advertisements according to a validated continuous or bounded-cycle policy.
 - Deliver valid devices and rejected-datagram diagnostics to the caller without exposing packet contents or security fields.
 - Make connection ownership, cancellation, callback failures, and cleanup explicit.
@@ -34,9 +37,10 @@ type Event struct {
 type EventHandler func(context.Context, Event) error
 
 type DiscoveryOptions struct {
-    ProbeInterval time.Duration
-    CycleTimeout  time.Duration
-    RepeatCount   int
+    ProbeInterval       time.Duration
+    CycleTimeout        time.Duration
+    RepeatCount         int
+    MaxSADPDatagramSize int
 }
 
 func DiscoverOnInterface(
@@ -53,6 +57,7 @@ func DiscoverOnInterface(
 - Continuous mode requires `ProbeInterval > 0`, `CycleTimeout == 0`, and `RepeatCount == 0`; it sends immediately and then at each interval while the receive loop remains active.
 - Bounded mode requires `ProbeInterval == 0`, `CycleTimeout > 0`, and `RepeatCount` in `1..100`; it sends immediately, receives for the full timeout, then starts the next cycle immediately. A device event does not end a cycle.
 - Reject mixed, missing, non-positive, or out-of-range timing policies before opening a socket. These settings define application scheduling only and do not imply SADP protocol timing requirements.
+- Require `MaxSADPDatagramSize` in `1..65507`; settings resolve an omitted value to 1500 before calling M6. Pass the same value to M1 `Listen` and M2 `ParseAdvertisement`.
 - The session context controls scheduled sends; give `Listen` a subordinate context that M6 cancels only after stopping and joining the writer on orderly shutdown. This keeps `Listen` as the sole connection closer without racing a normal close against a scheduled write. If `Listen` fails first, it may close during an in-flight write; join the writer and preserve both errors. A nil return is reserved for normal session cancellation and successful cleanup; socket, send, receive, close, and caller-handler errors are returned.
 
 ## 4. Session Lifecycle

@@ -16,6 +16,13 @@ M5 does not parse CLI arguments, render UI text, persist runtime locale changes,
 
 ## 3. Go API Contract
 
+```go
+var ErrNoExternalLocales = errors.New("no external locales")
+var ErrCatalogTooLarge = errors.New("locale catalog exceeds 1 MiB")
+```
+
+Callers distinguish the expected embedded-English-only case and oversized catalog input with `errors.Is`. Wrap these sentinels with operation context and preserve them.
+
 Package paths are finalized with implementation. The procedure documents define these contracts:
 
 ```go

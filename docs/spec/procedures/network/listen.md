@@ -8,10 +8,11 @@ Receive UDP datagrams on an M0-provided packet connection and dispatch each data
 ## 2. Go Contract
 
 ```go
-func Listen(ctx context.Context, conn net.PacketConn, handle PacketHandler) error
+func Listen(ctx context.Context, conn net.PacketConn, maxDatagramSize int, handle PacketHandler) error
 ```
 
 - Reject a nil context, connection, or handler with an error.
+- Reject `maxDatagramSize` outside `1..65507` before reading; the settings default is 1500.
 - Ownership of a non-nil connection transfers to `Listen` when called. Close it on every return path, including invalid arguments, cancellation, transport errors, and handler errors.
 - Preserve connection-close failures in the returned error, joined with the primary failure where necessary; normal cancellation returns nil only if cleanup succeeds.
 - Return nil for normal context cancellation. Return an error for unexpected read or handler failures; do not report failure as success.
@@ -20,7 +21,7 @@ func Listen(ctx context.Context, conn net.PacketConn, handle PacketHandler) erro
 
 ## 3. Processing Requirements
 
-1. Read into a buffer of `MaxSADPDatagramSize + 1` bytes so a packet larger than the shared M1/M2 application limit is detectable rather than silently passed as a truncated valid prefix.
+1. Read into a buffer of `maxDatagramSize + 1` bytes so a packet larger than the shared configured M1/M2 application limit is detectable rather than silently passed as a truncated valid prefix.
 2. Dispatch through `handleDatagram` sequentially; do not launch an unbounded goroutine per packet. Preserve each packet's sender address.
 3. Check cancellation before each read. Arrange for cancellation to close the owned connection exactly once and unblock a pending read. Normalize a read error caused by cancellation to normal cancellation; preserve other read errors. Include a close error in the returned error rather than discarding it.
 4. On unexpected handler errors, stop receiving and return a wrapped error. The application handler is responsible for consuming expected M2 validation errors when policy calls for dropping an invalid advertisement.
@@ -28,7 +29,7 @@ func Listen(ctx context.Context, conn net.PacketConn, handle PacketHandler) erro
 
 ## 4. Errors and Tests
 
-Return errors with stage context while preserving causes; never include packet bytes or secrets. Test nil arguments, connection closure on every return path, close-error reporting, normal cancellation during a blocked read, unexpected read errors, sequential dispatch and sender preservation, handler errors, and packets at/over the shared datagram limit.
+Return `TransportError` with a stable stage (`validation`, `read`, `dispatch`, or `close`) and preserved cause; cancellation remains detectable with `errors.Is`. Never include packet bytes or secrets. Test nil arguments, invalid limits, connection closure on every return path, close-error reporting, normal cancellation during a blocked read, unexpected read errors, sequential dispatch and sender preservation, handler errors, and packets at/over the configured datagram limit.
 
 ---
 

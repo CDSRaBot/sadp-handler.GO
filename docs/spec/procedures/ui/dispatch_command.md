@@ -18,9 +18,10 @@ type DiscoverCommand struct {
 }
 
 type DiscoveryPolicy struct {
-    ProbeInterval time.Duration
-    CycleTimeout  time.Duration
-    RepeatCount   int
+    ProbeInterval       time.Duration
+    CycleTimeout        time.Duration
+    RepeatCount         int
+    MaxSADPDatagramSize int
 }
 
 type ActivateCommand struct {
@@ -101,6 +102,13 @@ type CommandFailure struct {
     Message string `json:"message"`
 }
 
+const (
+    FailureInvalidArgument = "invalid_argument"
+    FailureUnsupported    = "unsupported"
+    FailureOperationFailed = "operation_failed"
+    FailureCanceled        = "canceled"
+)
+
 func DispatchCommand(
     ctx context.Context,
     command Command,
@@ -110,13 +118,14 @@ func DispatchCommand(
 
 `NetworkConfig` is the typed M3 configuration contract, not a separate M4 model. `Dependencies` supplies the application services used by dispatch, including a TUI-owned discovery-session manager. Command variants are closed to the M4 package; both parsers construct these variants. `DispatchCommand` must be the only common command-to-workflow routing boundary.
 
-- `PasswordFromPrompt` is used by the TUI's masked prompt; `PasswordFromStdin` is used by CLI `--password-stdin`. Neither source is read until all command, target, confirmation, and protocol-gate checks succeed.
-- `LanguageList` lists available locales; `LanguageSwitch` uses the exact `Code` value. A switch does not persist settings.
+- `PasswordFromPrompt` is used by the TUI's masked prompt; `PasswordFromStdin` is used by CLI `--password-stdin`. Neither source is read until all command, target, confirmation, and implementation-gate checks succeed.
+- `LanguageList` lists available locales; if M5 returns `ErrNoExternalLocales` with `["en"]`, treat that as a successful built-in-English-only result (`OK=true`). `LanguageSwitch` uses the exact `Code` value. A switch does not persist settings.
 - `TargetSelector` must select exactly one strategy: one or more explicit `MACs`, `UseTUISelection`, or `UseFocusedDevice`. Reject empty or conflicting selectors; resolution confirms the selected devices exist before any secret input.
 
 - A continuous `DiscoveryPolicy` has `ProbeInterval > 0`, `CycleTimeout == 0`, and `RepeatCount == 0`.
 - A bounded `DiscoveryPolicy` has `ProbeInterval == 0`, `CycleTimeout > 0`, and `RepeatCount` in `1..100`.
 - Reject policies that mix or omit these modes. CLI uses bounded policy; TUI uses continuous policy with a 60-second probe interval.
+- `MaxSADPDatagramSize` is populated from validated settings and must be in `1..65507`; pass it unchanged as M6 `DiscoveryOptions.MaxSADPDatagramSize`.
 
 ## 3. Dispatch and Target Resolution
 
@@ -128,8 +137,8 @@ func DispatchCommand(
 - Require explicit confirmation for two or more mutation targets. The TUI presents a confirmation showing the exact target set; CLI parsing requires `--yes` for multiple targets and does not prompt in one-shot mode.
 - Preserve one `DeviceOutcome` per requested target, with status and a safe error summary. Do not collapse a partial batch result into overall success. `CommandResult.OK` is true only if the command succeeds for all requested targets.
 - `help`, `version`, `quit`, `language`, and template export route through their corresponding M4/M5 service. `quit` is an REPL control result; in one-shot it succeeds without starting another command.
-- Until the device-management protocol gate is lifted, `ActivateCommand` and `NetworkCommand` return `CommandFailure{Code:"unsupported"}` before resolving secrets, reading password input, prompting, or opening sockets.
-- Use stable failure codes including `invalid_argument`, `unsupported`, `operation_failed`, and `canceled`. Sanitize `Message`; it must not expose secrets, raw payloads, or sensitive filesystem contents.
+- Until end-to-end device-operation workflows and result handling are implemented, `ActivateCommand` and `NetworkCommand` return `CommandFailure{Code:"unsupported"}` before resolving secrets, reading password input, prompting, or opening sockets. This is an implementation gate; the selected activation SADP XML variant and confirmed challenge-response calculation are not protocol gates.
+- Use the declared stable failure codes `invalid_argument`, `unsupported`, `operation_failed`, and `canceled`. `CommandFailure` is the typed result-level contract for caller/UI branching; sanitize `Message` so it cannot expose secrets, raw payloads, or sensitive filesystem contents.
 
 ## 4. Discovery Aggregation
 
@@ -150,7 +159,7 @@ func DispatchCommand(
 
 Return an error only when dispatch cannot produce a valid command result (for example, invalid internal command/dependency contract); expected command/workflow failures are represented in `CommandResult` with `OK=false` and a safe `CommandFailure`. Preserve underlying errors for internal handling without exposing sensitive values.
 
-Test every command variant, malformed typed requests, target resolution and ambiguity, duplicate normalized targets, selection-vs-focus precedence, multi-target confirmation, per-device partial outcomes, protocol-gate short-circuit before password input/network access, discovery aggregation and deterministic ordering, empty discovery, M5 routing, JSON result shape, redaction, and exit-status mapping.
+Test every command variant, malformed typed requests, target resolution and ambiguity, duplicate normalized targets, selection-vs-focus precedence, multi-target confirmation, per-device partial outcomes, implementation-gate short-circuit before password input/network access, discovery aggregation and deterministic ordering, empty discovery, M5 routing including its expected no-external-locales sentinel, JSON result shape, redaction, and exit-status mapping.
 
 ---
 

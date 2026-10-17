@@ -28,13 +28,13 @@ func BuildActivationXML(request ActivationRequest) ([]byte, error)
    - Credential: `<Password>`.
    - If recovery email is present, include `<OptionData><SecurityEmail>…</SecurityEmail></OptionData>`.
 4. Let the XML encoder escape text content. Since `encoding/xml` does not add a declaration automatically, prepend `xml.Header` to the marshaled XML bytes.
-5. Keep the resulting payload scoped to the operation. M1 currently specifies inquiry-probe sending and receiving only; it has no activation-command send API. Activation transmission and response handling are protocol gates documented in the system specification. Do not describe this builder alone as a completed activation operation.
+5. Keep the resulting payload scoped to the operation. M1 P1.4 `SendSADPDatagram` sends the payload as one SADP datagram to the multicast endpoint on the selected interface. The request is identified by `TargetMAC`; do not substitute an ISAPI HTTP request or endpoint. This builder does not interpret the device's activation result and alone is not a completed activation operation.
 
-These are Python-reference request fields, not yet verified against an authoritative SADP wire specification or known-good device exchange. Preserve them as compatibility fixtures, not universal protocol guarantees.
+SADP XML activation with `TargetMAC` is the selected protocol variant, not ISAPI HTTP activation. The element names and optional recovery field above are the request shape adopted from the Python implementation for this contract; activation-result semantics still require end-to-end testing.
 
 ## 4. Errors and Tests
 
-Return errors with field/operation context while avoiding secret values. Test required-field validation, password-policy rejection, optional email behavior, XML escaping, exact element names and casing, and serialization failures.
+Return a typed M3 validation error for invalid input and preserve serialization causes; messages must not disclose secret values. Test required-field validation, password-policy rejection, optional email behavior, XML escaping, exact element names and casing, and serialization failures.
 
 ---
 

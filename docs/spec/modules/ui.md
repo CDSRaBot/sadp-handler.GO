@@ -9,6 +9,7 @@ Provide the user-facing command-line entry point and connect validated user requ
 - Define one command catalog and shared typed command/result contracts for discovery, activation, network configuration, locale operations, help, version, and quit; retain separate TUI and CLI parsers.
 - Start the TUI by default; `--ui=no` starts an interactive CLI REPL, while `--once` selects one-shot command execution from process arguments.
 - Load and validate configuration, command-line arguments, and user-provided values.
+- Read the JSON settings value `network.max_sadp_datagram_size`; default an omitted or zero value to 1500, reject values outside `1..65507`, and pass the resolved limit through discovery to M1 and M2.
 - Resolve the initial language from built-in English, then settings, then command-line override; allow a built-in runtime command to switch locale for the current process.
 - Keep the active locale catalog complete by falling back to embedded English for missing translation keys.
 - Invoke application workflows with a cancellable `context.Context`.
@@ -57,10 +58,24 @@ The CLI must not perform socket setup, parse SADP XML, or construct device proto
 - Report outcomes per device for bulk operations. A failure for one device must not hide successful or failed results for other devices.
 - Write diagnostics to the designated error stream and command results to the designated output stream. Avoid leaking passwords, derived secrets, or activation payloads.
 - Use stable, documented exit-code semantics. Return errors from command handlers to the executable boundary, where they are logged and translated into process status.
-- Apply locale changes atomically: report a missing, empty, unreadable, or invalid catalog and leave the current locale unchanged. During startup, the current locale is built-in English; at runtime, it is the last successfully selected locale.
+- Apply requested locale changes atomically: report unreadable or invalid requested catalogs and leave the current locale unchanged. An absent/empty external catalog directory is not a startup failure; keep embedded English active. At runtime, preserve the last successfully selected locale on an actual switch failure.
 - Resolve startup precedence before loading: a command-line locale overrides a settings-file locale; an unavailable effective locale is an error and does not silently fall through to a lower-priority request.
-- Treat embedded English as always available. When enumerating locales at startup or opening the runtime selection command, report an empty or unavailable external locales directory and do not offer a switch; keep English active at startup or preserve the last successfully selected locale at runtime.
+- Treat embedded English as always available. `ListLocales` returns `ErrNoExternalLocales` with `["en"]` when the external directory is absent or has no external locale; this is expected, not a startup failure. Continue startup and expose the embedded English locale. Do not read or validate an external `en.json`; it is shadowed by the embedded catalog. At runtime, `language list` likewise returns the usable English entry without treating this sentinel as a user-facing failure.
 - Use one locale identifier across the settings key `language`, command-line flag `--lang`, and built-in `language` selection command.
+- Settings are a JSON object with Go shape:
+
+  ```go
+  type Settings struct {
+      Language string          `json:"language,omitempty"`
+      Network  NetworkSettings `json:"network,omitempty"`
+  }
+
+  type NetworkSettings struct {
+      MaxSADPDatagramSize int `json:"max_sadp_datagram_size,omitempty"`
+  }
+  ```
+
+  The setting key is `network.max_sadp_datagram_size`; omitted/zero resolves to `DefaultMaxSADPDatagramSize = 1500`, and values outside `1..65507` invalidate settings. M4 passes the resolved value through M6 to M1 and M2.
 
 ## 6. Testing Requirements
 

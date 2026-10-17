@@ -26,15 +26,15 @@ func LoadLocale(
 1. Call P5.2 `ValidateLocaleCode`.
 2. Validate the supplied canonical English catalog by applying the same entry rules as P5.3.
 3. If the code is `en`, call P5.4 with English as both base and translation and return its defensive copy.
-4. Otherwise read `locales/{langCode}.json` with slash-separated `fs.FS` paths. Wrap and return filesystem errors.
+4. Otherwise read at most 1 MiB plus one byte from `locales/{langCode}.json` using slash-separated `fs.FS` paths. If the extra byte is present, return `ErrCatalogTooLarge`; do not pass a truncated prefix to P5.3. Wrap and return other filesystem errors.
 5. Call P5.3 `DecodeLocaleCatalog`, then P5.4 `MergeLocaleCatalog`.
 6. Return the complete candidate only after every stage succeeds. Leave active locale changes to P5.8 `SwitchLocale`.
 
 ## 4. Errors and Tests
 
-Errors identify validation, read, decode, or merge stage and requested locale without including catalog contents. Preserve wrapped causes. Do not use `panic`.
+Return the typed `ErrCatalogTooLarge` for an oversized file and preserve other wrapped causes; errors identify validation, read, decode, or merge stage and requested locale without including catalog contents. Do not use `panic`.
 
-Test embedded-English loading without an external file, valid full/partial translated catalogs, missing/unreadable files, invalid locale identifiers, malformed catalogs, defensive copying, and that failures return no candidate catalog and do not change active state.
+Test embedded-English loading without an external file, valid full/partial translated catalogs, files at and above the 1 MiB read boundary, missing/unreadable files, invalid locale identifiers, malformed catalogs, defensive copying, and that failures return no candidate catalog and do not change active state.
 
 ---
 

@@ -12,7 +12,7 @@ func SendInquiryProbe(ctx context.Context, conn net.PacketConn, target net.Addr)
 ```
 
 - Reject a nil context, connection, or target with an error.
-- Return an error if `ctx` is already canceled before the write, if probe construction fails, or if writing fails or reports a short datagram.
+- Return `TransportError` with stable stage `validation`, `encode`, `write`, or `short_write` for invalid inputs, canceled context, probe construction failure, or failed/short write; preserve the underlying cause.
 - Do not take ownership of `conn`; the caller may pass the same connection to M1 `Listen` after this call.
 - Send exactly one UDP datagram per call. Do not wait for a response or retry.
 

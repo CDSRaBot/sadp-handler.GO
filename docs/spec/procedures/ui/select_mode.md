@@ -11,9 +11,9 @@ Resolve the process interaction mode from the global `--ui` option and terminal 
 type InterfaceMode string
 
 const (
-    ModeTUI          InterfaceMode = "tui"
+    ModeTUI            InterfaceMode = "tui"
     ModeCLIInteractive InterfaceMode = "cli-interactive"
-    ModeCLIOnce      InterfaceMode = "cli-once"
+    ModeCLIOnce        InterfaceMode = "cli-once"
 )
 
 func SelectUIMode(

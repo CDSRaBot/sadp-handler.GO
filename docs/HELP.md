@@ -2,7 +2,7 @@
 
 [Русская версия](ru/HELP.md)
 
-This document describes the user commands and options defined by the project specifications. The Go implementation has not started yet. The `activate` and `network` commands remain behind the protocol gate and must fail explicitly without reading passwords or performing network operations until the protocol has been verified.
+This document describes the user commands and options defined by the project specifications. The Go implementation has not started yet. The `activate` and `network` end-to-end workflows are not implemented and must fail explicitly without reading passwords or performing network operations until their result handling and cancellation contracts are implemented. Activation uses the accepted SADP XML request addressed by MAC; it is not an ISAPI HTTP operation.
 
 ## Starting the application
 
@@ -50,17 +50,18 @@ activate --device MAC [--device MAC ...] --password-stdin [--email EMAIL] [--yes
 
 Request activation of one or more devices.
 
+- Activation uses the selected SADP XML request addressed by target MAC; it is not an ISAPI HTTP request.
 - `--device MAC` specifies a target EUI-48 MAC address. This option may be repeated; duplicates after normalization are rejected.
 - `--password-stdin` selects stdin as the password source. In the REPL, input must not echo characters; in one-shot mode, one line is read. Do not pass the password as a command argument.
 - `--email EMAIL` is an optional email address for the activation operation.
 - `--yes` is required when two or more devices are specified.
 
-While the protocol gate is active, this command returns an `unsupported` error before reading stdin, prompting for a secret, or performing network operations.
+Until the end-to-end workflow is implemented, this command returns an `unsupported` error before reading stdin, prompting for a secret, or performing network operations.
 
 ### `network`
 
 ```text
-network --device MAC [--device MAC ...] --password-stdin (--dhcp | --address IPv4/PREFIX [--gateway IPv4]) [--yes]
+network --device MAC [--device MAC ...] --password-stdin (--dhcp | --address IPv4/PREFIX --gateway IPv4) [--yes]
 ```
 
 Request network configuration for one or more devices.
@@ -70,10 +71,10 @@ Request network configuration for one or more devices.
 - Exactly one of `--dhcp` and `--address` is required.
 - `--dhcp` enables DHCP and cannot be combined with `--address` or `--gateway`.
 - `--address IPv4/PREFIX` specifies a static IPv4 address and prefix length, for example `192.168.1.20/24`.
-- `--gateway IPv4` optionally specifies the gateway for a static configuration; it is allowed only with `--address`.
+- `--gateway IPv4` is required for a static configuration and is allowed only with `--address`.
 - `--yes` is required for two or more target devices.
 
-While the protocol gate is active, this command returns an `unsupported` error before reading stdin, prompting for a secret, or performing network operations.
+Until the end-to-end workflow is implemented, this command returns an `unsupported` error before reading stdin, prompting for a secret, or performing network operations.
 
 ### `language`
 

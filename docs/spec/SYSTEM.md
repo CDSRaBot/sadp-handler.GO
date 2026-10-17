@@ -4,18 +4,18 @@
 
 **SADP-handler** is a terminal-based Go utility for discovering, activating, and configuring Hikvision cameras and NVRs over the Search Active Device Protocol (SADP). Discovery targets devices on the local Layer 2 network, including devices that do not yet have an address usable by the host.
 
-The architecture baseline is established and the specifications define system boundaries, module APIs, and atomic procedures. End-to-end device-management operations remain subject to protocol verification.
+The architecture baseline is established and the specifications define system boundaries, module APIs, and atomic procedures. The Python implementation is the verified behavioral baseline for discovery: it has been tested with real devices, finds them, and receives their responses. The Go implementation must preserve this behavior and be validated against the same real-device scenario. SADP activation identifies its target by MAC address and uses the SADP XML request defined by M3. The `SHA-256(UTF-8(password + challenge))` challenge-response calculation is accepted as verified by practical experiments. End-to-end Go operations still require implementation and integration tests; details not covered by those experiments remain explicitly open.
 
 ## 2. Functional Scope
 
 The system is designed to provide:
 
-1. **Device discovery** — send the observed SADP inquiry probe and receive advertisements on supported local network interfaces. HiToolsDelivery captures confirm the UDP multicast destination `239.255.255.250:37020`, the XML `<Probe>` request containing `<Uuid>`, `<Types>inquiry</Types>`, and `<ResponseMode>2</ResponseMode>`, a device `<ProbeMatch>` message, and a separate multicast `<Hello>` message containing `<Types>hello</Types>`. The captured probe corresponding to the `ProbeMatch` and any relationship between the probe burst and `Hello` are not established. These captures do not define response correlation, retransmission policy, timing, or variation across models/firmware.
-2. **Device activation** — activate inactive devices, applying password-complexity rules and the required security exchange.
+1. **Device discovery** — send the SADP inquiry probe and receive device responses on supported local network interfaces. The Python implementation has been verified on real devices to find devices and receive their responses; its behavior is the compatibility baseline for the Go implementation. HiToolsDelivery captures document compatible traffic, including UDP multicast destination `239.255.255.250:37020`, an XML `<Probe>` request containing `<Uuid>`, `<Types>inquiry</Types>`, and `<ResponseMode>2</ResponseMode>`, device `<ProbeMatch>` messages, and a separate multicast `<Hello>` message containing `<Types>hello</Types>`. The captures do not establish universal response correlation, retransmission policy, timing, or behavior across all models and firmware.
+2. **Device activation** — send a SADP activation XML request identified by target MAC, applying password-complexity rules. The request format established by practical experiments is the compatibility baseline; activation outcome handling remains an application workflow.
 3. **Network configuration** — configure device IP address, subnet mask, gateway, and DHCP state.
 4. **CLI operation** — expose these workflows to users and automation with a shared command catalog and typed results. The default user-facing mode is a full-screen TUI; `--ui=no` starts an interactive CLI REPL, and `--ui=no --once` runs one command from process arguments and exits.
 
-These are target capabilities, not a claim that end-to-end device operations are currently specified or implemented. Bulk activation and network configuration must report per-device outcomes so a failure for one device does not conceal the result for others. The current module contracts do not yet define transmission of these requests or a complete response/correlation workflow.
+These are target capabilities, not a claim that end-to-end device operations are currently implemented. Bulk activation and network configuration must report per-device outcomes so a failure for one device does not conceal the result for others. M3 defines the SADP activation request, while its end-to-end sender/result workflow and network-configuration transport/result workflow must be completed before those commands are enabled.
 
 ## 3. Module Boundaries
 
@@ -54,7 +54,7 @@ Modules communicate through Go package APIs and explicitly defined Go types. A p
 
 - Coordinate activation, security challenge-response, and network-configuration operations.
 - Validate passwords and configuration before sending commands.
-- Construct protocol payloads from validated typed inputs and interpret device responses.
+- Construct SADP activation payloads from validated typed inputs and interpret device responses.
 - Keep workflow rules independent of CLI presentation and operating-system details.
 
 ### [M4: CLI](./modules/ui.md)
@@ -93,6 +93,7 @@ M6 depends on M0, M1, and M2; M4 invokes M6 and presents its events.
 - The specification for each package must define its purpose, public API, input and output types, possible errors, and behavior for nil or empty inputs, timeouts, and cancellation where applicable.
 - Data passed between modules must be validated at the boundary where it enters the system. Raw network payloads must not be treated as trusted application models.
 - Errors are part of each API contract. Callers must be able to distinguish and wrap failures with context; invalid data or failed operations must not be represented as success-shaped zero values.
+- When callers branch on failure category, expose a package-owned typed error or sentinel and preserve it through wrapping with `Unwrap`; callers must use `errors.Is`/`errors.As`, never parse error strings. Each such error contract specifies its stable categories and whether the underlying cause is retained.
 - Use interfaces at dependency boundaries when substitution is needed for testing or portability. Avoid interfaces and global state without a concrete need.
 
 ## 5. Go Architecture and Runtime Constraints
@@ -115,6 +116,7 @@ M6 depends on M0, M1, and M2; M4 invokes M6 and presents its events.
 - Return and handle errors explicitly. Do not ignore errors or use `panic` in production workflows.
 - Apply timeouts or cancellation to network operations and bound input sizes, concurrency, and other resource consumption.
 - Treat network data, CLI input, and configuration as untrusted. Validate addresses, ports, device fields, passwords, and protocol values before use.
+- The settings JSON may specify `network.max_sadp_datagram_size`. If omitted or zero, use `DefaultMaxSADPDatagramSize = 1500`; accept configured values from 1 through 65507 bytes. Pass the resolved value unchanged through discovery to both M1 receive validation and M2 parsing. This is an application resource limit, not a SADP protocol maximum.
 - Parse XML with `encoding/xml`; do not build XML or JSON by string formatting when a serializer is appropriate.
 - Do not log passwords, password-derived secrets, or other sensitive activation material.
 - Close files, response bodies, sockets, and other owned resources on all relevant paths.
@@ -135,16 +137,16 @@ Changes follow the development lifecycle in [`DEVELOPMENT_GUIDE.md`](../DEVELOPM
 
 The user identified `../examples/SADP-app` as a working Python implementation and directed that its processing approach be used as the local behavioral reference. The implementation uses interface-aware UDP sockets, packages received datagrams with their sender and timestamp, parses XML into a typed device model, and calculates `SHA-256(UTF-8(password + challenge))` as lowercase hexadecimal.
 
-This is an implementation reference, not an authoritative SADP protocol specification. The Python files currently present establish only part of the wire behavior:
+This is an implementation reference, not an authoritative SADP protocol specification. Although individual Python components describe only parts of the wire behavior, the complete discovery implementation has been verified with real devices as stated above. The component notes below are implementation details, not limits on that end-to-end evidence:
 
 - `core/contracts.py` sets `239.255.255.250:37020` and `MAX_PACKET_SIZE = 1500`. The size is labelled for fuzzing/MTU purposes in that code; it is not evidence of a SADP protocol maximum.
 - `core/adapter.py` joins the multicast group on a selected interface on Unix-like systems, binds UDP/37020 there, and sets multicast TTL to 64. Its Windows branch binds an interface address on an ephemeral port and does not join the multicast group. A Go adapter must implement and test the intended interface-specific behavior per OS rather than copy this discrepancy.
-- `core/protocol.py` bounds received datagrams and dispatches them synchronously to a callback. The files do not define or send a discovery probe, nor do they implement a full request/response exchange or correlate replies.
+- `core/protocol.py` bounds received datagrams and dispatches them synchronously to a callback. Treat that file's scope separately from the verified end-to-end discovery behavior; successful discovery does not establish universal response correlation or retry semantics.
 - `services/parser.py` expects direct XML child fields `MAC`, `IPv4Address`, `Activated`, `DeviceModel`, `SerialNumber`, and optionally `SoftwareVersion`. It accepts UTF-8 with an ISO-8859-1 fallback, requires MAC and IPv4 address, and uses `defusedxml`.
 - `services/logic/crypto.py` implements SHA-256 over the UTF-8 bytes of `password + challenge`. The helper extracting `Challenge`/`Salt` fields does not itself implement challenge negotiation.
 - `services/logic/__init__.py` emits `Activate` and `NetworkParameter` XML requests. Its missing-challenge branch sends the plaintext password; this fallback is explicitly not adopted by this Go specification.
 
-Accordingly, the reference behavior above may guide implementation and fixture design, but must not be presented as an independently verified protocol guarantee. Keep these gates open before claiming compatibility beyond the locally referenced behavior:
+The Python implementation's successful real-device discovery is verified behavior and is the baseline for this feature; it is not by itself a universal protocol guarantee. Keep the following protocol details open unless separately verified:
 
 - The user-provided HiToolsDelivery captures show requests sent to UDP multicast `239.255.255.250:37020` with XML `Probe` elements `Uuid`, `Types=inquiry`, and `ResponseMode=2`. Twelve request entries contain six UUID values, each appearing twice; this repetition is an observation, not a retry requirement.
 - A subsequent capture contains a 1,382-byte XML `ProbeMatch` response for a DS-2CD1021-I. Its direct-child fields include `Uuid`, `Types=inquiry`, device description and serial fields, command/HTTP ports, MAC and IPv4/IPv6 network fields, DHCP and channel counts, software/DSP versions, boot time, activation/security capability fields, a `Salt`, and lock/reset-related fields. The response UUID agrees between the displayed response records. The corresponding request payload is not included with this response capture, so equality with the probe UUID is not verified.
@@ -154,12 +156,13 @@ Accordingly, the reference behavior above may guide implementation and fixture d
 - Do not store sample MAC addresses, serial numbers, UUIDs, or salt values in specifications or fixtures. Treat security-related response fields as sensitive and never log full response XML.
 - Verify `ProbeMatch`/`Hello` variants and correlation behavior across additional devices/firmware before making fields mandatory or defining retries, timing, or a universal response-delivery contract.
 - Define and verify the transport contract for activation and network-configuration payloads: destination, send behavior, reply flow/correlation, timeout, cancellation, and per-device outcome mapping. M1 currently specifies inquiry-probe sending and receiving only; it does not define transmission of activation or network-configuration commands. M3 XML builders alone do not constitute an executable operation.
-- Confirm activation and network-configuration XML fields, challenge acquisition/correlation, and the SHA-256 input/encoding against known-good device exchanges. Do not assume the Python helper's SHA-256 expression is universally valid across models and firmware.
-- Use 1500 bytes only as an explicitly named compatibility/resource bound if chosen; it is not a verified protocol limit. M1 and M2 must use one shared bound and the receiver must detect/reject truncation and oversize datagrams.
+- The selected activation protocol is SADP XML identified by target MAC, as specified in P3.1; do not substitute ISAPI HTTP activation. The `SHA-256(UTF-8(password + challenge))` calculation used by network configuration is confirmed by practical experiments and is a normative M3 compatibility requirement.
+- The default `MaxSADPDatagramSize` is 1500 bytes and is configurable through settings as specified above. M1 and M2 must use the same resolved setting and the receiver must detect/reject truncation and oversize datagrams.
+- Continue to verify activation response/result behavior and the network-configuration request/response flow separately; request/hash confirmation alone does not establish all device outcome semantics or cross-model behavior.
 - Verify per-interface UDP multicast behavior and cancellation/cleanup on each supported OS. In particular, do not reproduce the Python Windows branch without evidence that it receives the intended SADP replies.
 - Finalize package paths before implementation. The module path is set in `go.mod`; API signatures in module documents are design contracts, not implemented symbols.
 
-The Go implementation has not started. It may follow the Python reference's processing boundaries, but protocol compatibility remains **unverified** until the gates above are resolved.
+The Go implementation has not started, so Go parity with the verified Python discovery baseline remains to be implemented and tested. The unresolved items above do not invalidate the confirmed Python discovery behavior; they limit claims about unverified protocol details, other devices/platforms, and activation or network configuration.
 
 ---
 

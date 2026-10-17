@@ -19,7 +19,7 @@ func OpenMulticast(iface Interface, group netip.AddrPort) (net.PacketConn, error
 ## 3. Processing Requirements
 
 1. Validate the selected interface and multicast endpoint before opening sockets. Do not silently select a different interface or endpoint.
-2. Join the requested IPv4 multicast group on the selected interface and configure send/receive behavior as supported by the target OS. A user-provided HiToolsDelivery capture observes inquiry traffic to `239.255.255.250:37020`; treat it as the current compatibility target, not an authoritative protocol constant for all devices.
+2. Join the requested IPv4 multicast group on the selected interface and configure send/receive behavior as supported by the target OS. The Python implementation's successful real-device discovery makes its interface-specific UDP behavior the compatibility reference; `239.255.255.250:37020` is the current endpoint baseline, not an authoritative protocol constant for all devices.
 3. Bind the receive socket to the requested group port (`37020` for the observed endpoint) where supported. Do not copy the Python Windows branch that binds an ephemeral port without joining the group; implement and verify Windows behavior explicitly.
 4. Ensure one `ReadFrom` and a serialized `WriteTo` can be active concurrently on the returned connection. Keep both directions tied to the selected interface.
 5. Do not set an unverified multicast TTL or infer cross-subnet discovery requirements. Any such option must be justified by a verified requirement.
