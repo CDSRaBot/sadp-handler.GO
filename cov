@@ -1,0 +1,14 @@
+mode: set
+github.com/CDSRaBot/sadp-handler.GO/internal/logic/errors.go:23.2,23.18 1 0
+github.com/CDSRaBot/sadp-handler.GO/internal/logic/errors.go:24.3,25.1 1 0
+github.com/CDSRaBot/sadp-handler.GO/internal/logic/errors.go:26.2,26.60 1 0
+github.com/CDSRaBot/sadp-handler.GO/internal/logic/errors.go:31.2,32.1 1 0
+github.com/CDSRaBot/sadp-handler.GO/internal/logic/errors.go:42.2,42.19 1 1
+github.com/CDSRaBot/sadp-handler.GO/internal/logic/errors.go:43.3,44.1 1 1
+github.com/CDSRaBot/sadp-handler.GO/internal/logic/errors.go:45.2,45.55 1 0
+github.com/CDSRaBot/sadp-handler.GO/internal/logic/hash.go:15.2,15.20 1 1
+github.com/CDSRaBot/sadp-handler.GO/internal/logic/hash.go:16.3,17.1 1 1
+github.com/CDSRaBot/sadp-handler.GO/internal/logic/hash.go:18.2,18.21 1 1
+github.com/CDSRaBot/sadp-handler.GO/internal/logic/hash.go:19.3,20.1 1 1
+github.com/CDSRaBot/sadp-handler.GO/internal/logic/hash.go:22.2,26.1 5 1
+github.com/CDSRaBot/sadp-handler.GO/internal/logic/hash.go:27.2,27.40 5 1
