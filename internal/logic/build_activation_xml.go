@@ -1,11 +1,16 @@
 package logic
 
-import "errors"
+import (
+	"errors"
+	"net"
+)
 
-// BuildActivationXML is a placeholder implementation.
-// It currently returns a not‑implemented error to satisfy compilation
-// while the real logic is being developed.
-func BuildActivationXML() error {
-    return errors.New("not implemented")
+type ActivationRequest struct {
+	MAC      net.HardwareAddr
+	Password string
+	Email    string
 }
 
+func BuildActivationXML(request ActivationRequest) ([]byte, error) {
+	return nil, errors.New("not implemented")
+}
