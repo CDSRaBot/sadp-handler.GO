@@ -87,6 +87,29 @@ M5 supplies locale services to M4 and does not own command-line parsing or termi
 
 M6 depends on M0, M1, and M2; M4 invokes M6 and presents its events.
 
+### [M7: Configuration](./modules/configuration.md)
+
+**Role:** load and validate the external `settings.json` and provide the
+typed baseline configuration used by M0-M6.
+
+- Use `settings.json` as the only external baseline settings source.
+- Apply documented defaults only when the file is absent or a setting is
+  explicitly documented as omitted/zero.
+- Require a `_comments` entry for every setting; comments document all choices
+  and value boundaries because JSON has no native comment syntax.
+- Apply CLI overrides after file settings and before starting workflows.
+
+### [M8: Application Composition](./modules/application.md)
+
+**Role:** convert M7 settings into one typed `RuntimeConfig` and compose
+dependencies for M4, M5, and M6.
+
+- Own startup precedence and ensure JSON settings are decoded only once.
+- Construct M5's `fs.FS`, M0's `MulticastOptions`, M6's `DiscoveryOptions`,
+  and the configured `slog` level.
+- Keep configuration out of package globals and prevent downstream modules from
+  depending on the `settings.json` schema.
+
 ## 4. Data and API Contracts
 
 - Public package APIs use typed Go values rather than unstructured maps.
@@ -116,7 +139,14 @@ M6 depends on M0, M1, and M2; M4 invokes M6 and presents its events.
 - Return and handle errors explicitly. Do not ignore errors or use `panic` in production workflows.
 - Apply timeouts or cancellation to network operations and bound input sizes, concurrency, and other resource consumption.
 - Treat network data, CLI input, and configuration as untrusted. Validate addresses, ports, device fields, passwords, and protocol values before use.
-- The settings JSON may specify `network.max_sadp_datagram_size`. If omitted or zero, use `DefaultMaxSADPDatagramSize = 1500`; accept configured values from 1 through 65507 bytes. Pass the resolved value unchanged through discovery to both M1 receive validation and M2 parsing. This is an application resource limit, not a SADP protocol maximum.
+- All baseline runtime settings are read from `settings.json` through M7 and
+  composed by M8. The
+  complete key set, defaults, comments, and boundaries are defined in
+  [M7](./modules/configuration.md) and the checked-in [template](../../settings.json).
+  In particular, `network.max_sadp_datagram_size` defaults to 1500 (zero also
+  means default) and accepts 1 through 65507 bytes. The resolved value is
+  passed unchanged through discovery to M1 and M2. This is an application
+  resource limit, not a SADP protocol maximum.
 - Parse XML with `encoding/xml`; do not build XML or JSON by string formatting when a serializer is appropriate.
 - Do not log passwords, password-derived secrets, or other sensitive activation material.
 - Close files, response bodies, sockets, and other owned resources on all relevant paths.

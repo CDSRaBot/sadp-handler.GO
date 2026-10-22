@@ -37,6 +37,7 @@ type Event struct {
 type EventHandler func(context.Context, Event) error
 
 type DiscoveryOptions struct {
+    Multicast          adapter.MulticastOptions
     ProbeInterval       time.Duration
     CycleTimeout        time.Duration
     RepeatCount         int
@@ -53,7 +54,8 @@ func DiscoverOnInterface(
 
 - Для `DeviceFound` поле `Device` ненулевое, а `Err` равен nil. Для `DatagramRejected` поле `Device` равно nil, а `Err` ненулевое. Если отправитель доступен, `Sender` сохраняется в обоих типах событий. `ObservedAt` фиксирует время, когда M6 принял датаграмму в обработку.
 - Отклонять nil-контекст, nil-обработчик и неподходящий интерфейс до запуска сеанса.
-- Использовать наблюдаемый совместимый endpoint `239.255.255.250:37020`. Менять endpoint можно только явным будущим изменением API/спецификации, а не незаметным fallback.
+- Использовать `options.Multicast`, переданный M8 из проверенных настроек M7
+  (`239.255.255.250:37020`, TTL `64` по умолчанию). M6 не читает settings.json.
 - Непрерывный режим требует `ProbeInterval > 0`, `CycleTimeout == 0` и `RepeatCount == 0`; probe отправляется немедленно, затем с заданным интервалом при работающем цикле приёма.
 - Ограниченный режим требует `ProbeInterval == 0`, `CycleTimeout > 0` и `RepeatCount` в диапазоне `1..100`; probe отправляется сразу, после чего приём продолжается в течение полного timeout, а следующий цикл начинается немедленно. Событие найденного устройства цикл не завершает.
 - Отклонять смешанные, отсутствующие, неположительные и выходящие за диапазон временные политики до открытия сокета. Эти параметры задают расписание приложения, но не требования времени SADP.

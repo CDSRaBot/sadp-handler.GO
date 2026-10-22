@@ -26,10 +26,22 @@ type Interface struct {
     Flags        net.Flags
 }
 
+type MulticastOptions struct {
+    Group netip.Addr
+    Port  uint16
+    TTL   uint8
+}
+
+type Dependencies struct {
+    OpenMulticast func(Interface, MulticastOptions) (net.PacketConn, error)
+}
+
 type AdapterErrorKind string
 
 const (
     AdapterInvalidInterface    AdapterErrorKind = "invalid_interface"
+    AdapterInvalidMulticast    AdapterErrorKind = "invalid_multicast"
+    AdapterBindFailed          AdapterErrorKind = "bind_failed"
     AdapterPermissionDenied    AdapterErrorKind = "permission_denied"
     AdapterUnsupportedPlatform AdapterErrorKind = "unsupported_platform"
 )
@@ -43,11 +55,11 @@ func (e *AdapterError) Error() string
 func (e *AdapterError) Unwrap() error
 
 func ListInterfaces() ([]Interface, error)
-func OpenMulticast(iface Interface, group netip.AddrPort) (net.PacketConn, error)
+func OpenMulticast(iface Interface, options MulticastOptions) (net.PacketConn, error)
 ```
 
 - `ListInterfaces` returns eligible interfaces and an error if enumeration fails. An empty result is valid when no eligible interface exists.
-- `OpenMulticast` validates its arguments and returns a connection configured to send and receive SADP UDP traffic on the requested interface. On error, it returns no usable connection.
+- `OpenMulticast` validates its interface, multicast IPv4 address, port, and TTL, then returns a connection configured to send and receive SADP UDP traffic on the requested interface. On error, it returns no usable connection.
 - The returned connection supports one concurrent reader and one serialized writer for M6's persistent receive loop and scheduled probe sends, and remains bound to the selected interface for both directions.
 - The caller owns the returned `net.PacketConn` until it transfers ownership to M1 `Listen`; if it does not pass the connection to `Listen`, it must close it. `Listen` closes a transferred connection on all return paths.
 - Returned data uses Go networking types from `net` and `net/netip`; callers must not rely on OS-specific adapter names or socket internals for portable behavior.
@@ -56,9 +68,11 @@ func OpenMulticast(iface Interface, group netip.AddrPort) (net.PacketConn, error
 
 - Exclude loopback and interfaces that are down or lack a usable IPv4 address for the requested operation.
 - Preserve enough interface identity (index and name) to bind traffic to the selected adapter; do not assume a hostname resolves to the correct interface.
-- Enumerate interfaces through Go's `net` package and join `239.255.255.250` on the selected interface, binding the receive socket to UDP port `37020` where supported. The same endpoint is observed in a HiToolsDelivery capture; it remains a compatibility target pending broader device verification.
-- The Python reference sets multicast TTL to 64. Preserve that value only if required by observed behavior; it does not establish SADP's required TTL or imply that discovery should cross subnets.
+- Enumerate interfaces through Go's `net` package and join the configured multicast group on the selected interface, binding the receive socket to the configured UDP port where supported. M7 defaults are `239.255.255.250:37020`.
+- Apply the configured TTL (`64` by default) to multicast writes. TTL does not imply that discovery should cross subnets.
 - The Python reference's Unix-like branch binds the group port and joins on the selected interface. Its Windows branch binds an ephemeral local port and omits group membership. This inconsistency is not a target behavior: implement and verify Windows multicast send/receive explicitly, and return an error rather than silently claiming that an unverified socket is configured correctly.
+- M8 supplies `MulticastOptions` from M7. M0 must not decode settings or embed
+  alternate baseline values.
 - Use Go's `net` package for interface enumeration and packet connections. Add platform-specific code only where required by OS socket behavior.
 - Support Windows, Linux (including Termux where Go and the required network permissions are available), and macOS where the necessary multicast socket behavior is supported.
 - Report permission, bind, and unsupported-platform failures as errors with operation context. Do not silently fall back to a different interface.

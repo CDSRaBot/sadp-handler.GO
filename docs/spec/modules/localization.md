@@ -21,7 +21,7 @@ var ErrNoExternalLocales = errors.New("no external locales")
 var ErrCatalogTooLarge = errors.New("locale catalog exceeds 1 MiB")
 ```
 
-Callers distinguish the expected embedded-English-only case and oversized catalog input with `errors.Is`. Wrap these sentinels with operation context and preserve them.
+Callers distinguish the expected embedded-English-only case and oversized catalog input with `errors.Is`. Wrap these sentinels with operation context and preserve them. M8 supplies the validated external locale directory as `fs.FS`; M5 does not interpret paths or settings JSON.
 
 Package paths are finalized with implementation. The procedure documents define these contracts:
 

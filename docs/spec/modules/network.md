@@ -70,7 +70,7 @@ func SendSADPDatagram(
 
 ## 5. Validation and Safety
 
-- Use the configured `maxDatagramSize` consistently for receive and parser validation. The default is `DefaultMaxSADPDatagramSize = 1500`, supplied by settings; valid configured values are `1..65507`. This is an application resource bound, not a SADP datagram limit. Read one byte beyond the limit so oversized datagrams are detected instead of silently parsing a truncated prefix.
+- Use the configured `maxDatagramSize` consistently for receive and parser validation. M7 supplies the default `DefaultMaxSADPDatagramSize = 1500`; valid configured values are `1..65507`. This is an application resource bound, not a SADP datagram limit. Read one byte beyond the limit so oversized datagrams are detected instead of silently parsing a truncated prefix.
 - Treat the received payload as untrusted bytes, preserve its sender, and dispatch synchronously as in the Python reference. Do not log packet contents.
 - Avoid logging full packet contents, credentials, or security material.
 - Use network deadlines or another supported cancellation mechanism so context cancellation reliably releases blocked reads.

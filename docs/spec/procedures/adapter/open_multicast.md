@@ -8,7 +8,7 @@ Open a UDP packet connection for SADP multicast traffic on one explicitly select
 ## 2. Go Contract
 
 ```go
-func OpenMulticast(iface Interface, group netip.AddrPort) (net.PacketConn, error)
+func OpenMulticast(iface Interface, options MulticastOptions) (net.PacketConn, error)
 ```
 
 - Reject an ineligible or unavailable interface, an invalid/non-multicast IPv4 group, or an invalid/zero UDP port.
@@ -18,9 +18,9 @@ func OpenMulticast(iface Interface, group netip.AddrPort) (net.PacketConn, error
 
 ## 3. Processing Requirements
 
-1. Validate the selected interface and multicast endpoint before opening sockets. Do not silently select a different interface or endpoint.
-2. Join the requested IPv4 multicast group on the selected interface and configure send/receive behavior as supported by the target OS. The Python implementation's successful real-device discovery makes its interface-specific UDP behavior the compatibility reference; `239.255.255.250:37020` is the current endpoint baseline, not an authoritative protocol constant for all devices.
-3. Bind the receive socket to the requested group port (`37020` for the observed endpoint) where supported. Do not copy the Python Windows branch that binds an ephemeral port without joining the group; implement and verify Windows behavior explicitly.
+1. Validate the selected interface, multicast IPv4 group, port, and TTL before opening sockets. Do not silently select a different interface or endpoint.
+2. Join the requested IPv4 multicast group on the selected interface and configure send/receive behavior as supported by the target OS. M8 supplies the options; M0 does not read settings files.
+3. Bind the receive socket to the requested port where supported and apply the requested TTL to multicast writes. Do not copy the Python Windows branch that binds an ephemeral port without joining the group; implement the behavior behind a platform seam and verify it explicitly.
 4. Ensure one `ReadFrom` and a serialized `WriteTo` can be active concurrently on the returned connection. Keep both directions tied to the selected interface.
 5. Do not set an unverified multicast TTL or infer cross-subnet discovery requirements. Any such option must be justified by a verified requirement.
 6. Close any partially initialized socket on setup failure and return the original cause wrapped with operation/interface context. Do not expose a partially configured connection as success.

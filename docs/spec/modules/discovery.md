@@ -37,6 +37,7 @@ type Event struct {
 type EventHandler func(context.Context, Event) error
 
 type DiscoveryOptions struct {
+    Multicast          adapter.MulticastOptions
     ProbeInterval       time.Duration
     CycleTimeout        time.Duration
     RepeatCount         int
@@ -53,7 +54,9 @@ func DiscoverOnInterface(
 
 - For `DeviceFound`, `Device` is non-nil and `Err` is nil. For `DatagramRejected`, `Device` is nil and `Err` is non-nil; `Sender` is preserved in either event when available. `ObservedAt` records when M6 accepted the datagram for processing.
 - Reject nil context, nil handler, and an ineligible interface with an error before starting a session.
-- Use the observed compatibility endpoint `239.255.255.250:37020`. The endpoint is configurable only through a future explicit API/specification change, not by silent fallback.
+- Use `options.Multicast`, supplied by M8 from validated M7 settings
+  (`239.255.255.250:37020`, TTL `64` by default). M6 does not read settings
+  files or embed alternate endpoint values.
 - Continuous mode requires `ProbeInterval > 0`, `CycleTimeout == 0`, and `RepeatCount == 0`; it sends immediately and then at each interval while the receive loop remains active.
 - Bounded mode requires `ProbeInterval == 0`, `CycleTimeout > 0`, and `RepeatCount` in `1..100`; it sends immediately, receives for the full timeout, then starts the next cycle immediately. A device event does not end a cycle.
 - Reject mixed, missing, non-positive, or out-of-range timing policies before opening a socket. These settings define application scheduling only and do not imply SADP protocol timing requirements.

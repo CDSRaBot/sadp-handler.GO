@@ -27,7 +27,9 @@ The user-provided HiToolsDelivery capture observes this UTF-8 XML request shape:
 - Serialize XML with `encoding/xml`; do not construct it with string formatting.
 - Include a UUID value in the captured canonical hexadecimal UUID form. Generate a new UUID for each call; the capture shows six UUID values, each occurring twice, but does not establish retry semantics.
 - Emit the exact element names and values shown above. Preserve the observed lowercase `utf-8` declaration and exact `inquiry` and `2` values.
-- Send the complete XML as one datagram to the caller-supplied target. `239.255.255.250:37020` is the endpoint observed in this capture and the current compatibility target; do not silently replace a caller-supplied target.
+- Send the complete XML as one datagram to the caller-supplied target. M7
+  supplies `239.255.255.250:37020` by default; do not silently replace a
+  caller-supplied target.
 - Do not append multiple XML documents into one datagram.
 
 ## 4. Response and Error Policy

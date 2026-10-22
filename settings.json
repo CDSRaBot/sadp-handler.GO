@@ -1,0 +1,40 @@
+{
+  "_comments": {
+    "ui.mode": "Режим интерфейса по умолчанию: \"yes\" = полноэкранный TUI, \"no\" = CLI REPL. Допустимы только yes/no; параметр командной строки --ui имеет приоритет.",
+    "ui.format": "Формат результатов CLI: \"text\" или \"json\". Допустимы только text/json; --format имеет приоритет.",
+    "ui.language": "Код языка по умолчанию: непустой код ISO 639-1/каталог locales (например \"en\" или \"ru\"); отсутствующее значение означает встроенный English; --lang имеет приоритет.",
+    "ui.once": "Режим однократной команды по умолчанию: false или true. true допустим только для CLI (ui.mode=no); --once имеет приоритет.",
+    "localization.directory": "Каталог внешних локалей относительно корня запуска: непустой относительный путь; абсолютные пути и пути за пределами корня запрещены.",
+    "network.multicast_group": "IPv4 multicast-группа SADP: корректный multicast IPv4-адрес; значение по умолчанию 239.255.255.250.",
+    "network.multicast_port": "UDP-порт SADP: целое число от 1 до 65535; значение по умолчанию 37020.",
+    "network.multicast_ttl": "TTL исходящих multicast-пакетов: целое число от 1 до 255; значение по умолчанию 64.",
+    "network.max_sadp_datagram_size": "Максимальный размер принимаемой SADP-дейтаграммы: целое число от 1 до 65507 байт; 0 или отсутствие означает 1500.",
+    "discovery.probe_interval": "Интервал повторной отправки в непрерывном режиме: положительная duration-строка Go (например \"60s\"); пустое значение означает 0 и требуется для bounded-режима.",
+    "discovery.cycle_timeout": "Окно приёма одного цикла в bounded-режиме: пустое/нулевое значение для continuous или положительная duration-строка Go (например \"5s\") для bounded.",
+    "discovery.repeat_count": "Количество bounded-циклов: 0 для continuous или целое число от 1 до 100 для bounded; 0 не может сочетаться с cycle_timeout.",
+    "logging.level": "Минимальный уровень журналирования: \"debug\", \"info\", \"warn\" или \"error\"; значение по умолчанию info. Секреты и payload не журналируются."
+  },
+  "ui": {
+    "mode": "yes",
+    "format": "text",
+    "language": "en",
+    "once": false
+  },
+  "localization": {
+    "directory": "locales"
+  },
+  "network": {
+    "multicast_group": "239.255.255.250",
+    "multicast_port": 37020,
+    "multicast_ttl": 64,
+    "max_sadp_datagram_size": 1500
+  },
+  "discovery": {
+    "probe_interval": "",
+    "cycle_timeout": "5s",
+    "repeat_count": 1
+  },
+  "logging": {
+    "level": "info"
+  }
+}

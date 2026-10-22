@@ -130,7 +130,18 @@ func DispatchCommand(
 ## 3. Dispatch and Target Resolution
 
 - Reject nil context, nil command, invalid typed fields, or invalid dependency configuration before side effects.
-- `DiscoverCommand` invokes M6 with the selected policy. The TUI owns at most one continuous discovery session: it starts immediately, keeps receiving, and sends a new probe every 60 seconds until canceled. TUI dispatch starts or switches this background session without blocking the UI event loop and returns an acknowledgement; discovery events are marshaled to the UI event loop before updating its collector. Re-selecting the active interface does not start a duplicate session; selecting a different interface cancels and joins the old session before starting the new one. CLI starts the first bounded cycle immediately; every cycle sends one probe and keeps receiving for the full timeout, then starts the next cycle immediately. A received device does not shorten a cycle.
+- `DiscoverCommand` invokes M6 with the selected M7-resolved policy. The TUI
+  owns at most one continuous discovery session: it starts immediately, keeps
+  receiving, and sends a new probe every configured interval (60 seconds by
+  default) until canceled. TUI dispatch starts or switches this background
+  session without blocking the UI event loop and returns an acknowledgement;
+  discovery events are marshaled to the UI event loop before updating its
+  collector. Re-selecting the active interface does not start a duplicate
+  session; selecting a different interface cancels and joins the old session
+  before starting the new one. CLI starts the first bounded cycle immediately;
+  every cycle sends one probe and keeps receiving for the configured timeout,
+  then starts the next cycle immediately. A received device does not shorten a
+  cycle.
 - An absent TUI interface index is resolved from the explicitly selected interface before dispatch; absence is an actionable error. CLI requires the index during parsing.
 - For TUI mutation commands, an explicit MAC targets that device. Otherwise resolve all currently selected devices; if selection is empty, resolve the focused device. Reject an empty/unavailable target set before collecting a password or dispatching a mutation.
 - For CLI mutation commands, resolve every explicitly supplied MAC against the current device inventory. Reject unknown or ambiguous targets; never silently skip a target. Preserve input order for per-device outcomes.

@@ -11,6 +11,7 @@ The Python implementation's successful discovery and response reception on real 
 
 ```go
 type DiscoveryOptions struct {
+    Multicast          adapter.MulticastOptions
     ProbeInterval       time.Duration
     CycleTimeout        time.Duration
     RepeatCount         int
@@ -25,7 +26,9 @@ func DiscoverOnInterface(
 ) error
 ```
 
-- Reject nil context/handler, an ineligible interface, invalid or mixed timing options, and `MaxSADPDatagramSize` outside `1..65507` before network activity. Settings resolve an omitted/zero value to 1500 before calling M6.
+- Reject nil context/handler, an ineligible interface, invalid multicast
+  options, invalid or mixed timing options, and `MaxSADPDatagramSize` outside
+  `1..65507` before network activity. M8 resolves settings before calling M6.
 - Continuous mode is valid only when `ProbeInterval > 0`, `CycleTimeout == 0`, and `RepeatCount == 0`.
 - Bounded mode is valid only when `ProbeInterval == 0`, `CycleTimeout > 0`, and `RepeatCount` is in `1..100`.
 - Return nil on normal external cancellation after successful cleanup, or on completion of all bounded cycles and successful cleanup. Return socket, sender, listener, handler, or cleanup failures with stage context; preserve underlying causes.
@@ -33,7 +36,7 @@ func DiscoverOnInterface(
 
 ## 3. Session Lifecycle
 
-1. Open one connection through M0 for `239.255.255.250:37020`.
+1. Open one connection through M0 using `options.Multicast`.
 2. Send the first probe immediately with M1 `SendInquiryProbe`. If it fails, close the connection and return the send error joined with any close error.
 3. Start M1 `Listen` on that connection with a subordinate listener context and the resolved `MaxSADPDatagramSize`. After transfer, `Listen` owns closing it; M6 owns session coordination and scheduled writes. Require exactly one reader and one serialized writer on the `net.PacketConn`; no other component may use it.
 4. In continuous mode, schedule another probe every `ProbeInterval`, measured from completion of the preceding scheduled send. Keep receiving between and during sends until external cancellation.
