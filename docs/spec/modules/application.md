@@ -57,6 +57,16 @@ global state is permitted.
 M8 configures logging before workflows start. The configured logger must not
 write secrets, packet payloads, passwords, challenges, or complete XML.
 
+Logging is implemented by `internal/logging` using the standard-library
+`log/slog`. M8 creates the logger once and injects `*slog.Logger` into the
+modules that need it. The logger writes to `.\logs`; the directory is created
+at startup and a failure to create or open it aborts startup. Each file is
+limited to 5 MiB and is rotated before an oversized write. At initialization
+the handler writes a blank line and a timestamped `logging started` header
+before the first ordinary record. The header is emitted once per process run,
+not by individual modules. See [Logging Specification](../logging.md) for the
+module and procedure event contract.
+
 ## 4. Cross-Platform Composition
 
 M8 supplies the same typed `adapter.MulticastOptions` on Windows, Linux

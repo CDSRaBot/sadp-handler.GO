@@ -110,6 +110,18 @@ dependencies for M4, M5, and M6.
 - Keep configuration out of package globals and prevent downstream modules from
   depending on the `settings.json` schema.
 
+### Logging policy
+
+Logging is a cross-cutting concern implemented by the internal
+[`logging` specification](./logging.md) and Go's standard `log/slog`
+package. M8 initializes one logger before workflows start and injects it into
+modules through typed dependencies. The logger writes to `.\logs`, rotates
+before a file exceeds 5 MiB, and writes a blank line plus a timestamped
+start-of-run header before the first record of every process run. Each module
+and atomic procedure must declare its imports, logging points, levels, safe
+attributes, redaction rules, and event ownership in accordance with the
+logging specification.
+
 ## 4. Data and API Contracts
 
 - Public package APIs use typed Go values rather than unstructured maps.
@@ -149,6 +161,8 @@ dependencies for M4, M5, and M6.
   resource limit, not a SADP protocol maximum.
 - Parse XML with `encoding/xml`; do not build XML or JSON by string formatting when a serializer is appropriate.
 - Do not log passwords, password-derived secrets, or other sensitive activation material.
+- Do not log complete network payloads, XML, or complete configuration
+  documents. Diagnostic logs must be separate from text and JSON CLI output.
 - Close files, response bodies, sockets, and other owned resources on all relevant paths.
 
 ## 7. Specification and Verification Requirements

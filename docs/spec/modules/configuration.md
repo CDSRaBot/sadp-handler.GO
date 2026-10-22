@@ -81,6 +81,10 @@ Do not log the file contents, passwords, tokens, challenge values, or protocol p
 `logging.level` is consumed by M8 to configure `slog.HandlerOptions.Level`:
 `debug`, `info`, `warn`, and `error` map to the corresponding `slog.Level`.
 
+The log directory and file-size limit are not user settings: logging always
+uses `.\logs`, and one file is limited to 5 MiB. M7's logging points and
+redaction requirements are defined in the [Logging Specification](../logging.md).
+
 ## 5. Tests
 
 Test missing-file defaults, valid template loading, every documented boundary, malformed JSON, missing `_comments`, unknown keys, invalid durations/paths/addresses, precedence, and secret/payload redaction. Use temporary files and deterministic inputs; no network or terminal is required.
