@@ -2,7 +2,7 @@
 
 ## Project status
 
-The repository currently contains design documentation; Go implementation has not started. The local Python reference is documented as a behavioral baseline, while the phase 3 audit remains open for unresolved protocol details and finalization of module/package paths.
+The repository currently contains design documentation; Go implementation has not started. The local Python reference is documented as a behavioral baseline. The phase 3 specification audit is complete; unresolved protocol details remain explicitly tracked as integration gates, and implementation package paths remain to be finalized during phase 4.
 
 ## Documentation
 
@@ -19,7 +19,7 @@ The repository currently contains design documentation; Go implementation has no
 
 ## Статус проекта
 
-Сейчас репозиторий содержит документацию по проектированию; реализация ещё не начата. Универсальные заготовки HTTP/JSON удалены, поскольку они не соответствовали спецификациям SADP. Аудит фазы 3 ещё не завершён: необходимо подтвердить детали протокола и окончательно определить пути модулей и пакетов.
+Сейчас репозиторий содержит документацию по проектированию; реализация ещё не начата. Универсальные заготовки HTTP/JSON удалены, поскольку они не соответствовали спецификациям SADP. Аудит спецификаций фазы 3 завершён; неподтверждённые детали протокола явно оставлены как интеграционные контрольные точки, а окончательные пути модулей и пакетов будут закреплены на фазе 4.
 
 ## Документация
 
