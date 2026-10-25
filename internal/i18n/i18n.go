@@ -113,7 +113,7 @@ func MergeLocaleCatalog(english, translated map[string]string) (map[string]strin
 	return merged, nil
 }
 
-func LoadLocale(filesystem fs.FS, langCode string, english map[string]string) (map[string]string, error) {
+func LoadLocale(filesystem fs.FS, langCode string, english map[string]string) (result map[string]string, resultErr error) {
 	if filesystem == nil {
 		return nil, errors.New("locale filesystem is nil")
 	}
@@ -130,7 +130,12 @@ func LoadLocale(filesystem fs.FS, langCode string, english map[string]string) (m
 	if err != nil {
 		return nil, fmt.Errorf("open locale catalog: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			result = nil
+			resultErr = errors.Join(resultErr, fmt.Errorf("close locale catalog: %w", err))
+		}
+	}()
 	data, err := io.ReadAll(io.LimitReader(file, 1<<20+1))
 	if err != nil {
 		return nil, fmt.Errorf("read locale catalog: %w", err)
