@@ -19,6 +19,7 @@ The repository currently contains design documentation; Go implementation has no
 
 - [Command help (English)](./docs/HELP.md)
 - [Справка по командам (русский)](./docs/ru/HELP.md)
+- [Диаграмма работы и workflow (русский)](./docs/ru/WORKFLOW.md)
 - [Development lifecycle guide](./docs/DEVELOPMENT_GUIDE.md)
 - [System specification](./docs/spec/SYSTEM.md)
 - [External settings template](./settings.json)
