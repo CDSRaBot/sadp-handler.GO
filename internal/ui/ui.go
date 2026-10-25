@@ -352,8 +352,13 @@ func dispatchMutationResult(ctx context.Context, command string, outcomes []Devi
 			return dispatchFailure(command, FailureCanceled, "command canceled", err)
 		}
 		var operationErr *logic.DeviceOperationError
-		if errors.As(err, &operationErr) && operationErr.Kind == logic.OperationInvalidInput {
-			return dispatchFailure(command, FailureInvalidArgument, "invalid device operation", err)
+		if errors.As(err, &operationErr) {
+			switch operationErr.Kind {
+			case logic.OperationInvalidInput:
+				return dispatchFailure(command, FailureInvalidArgument, "invalid device operation", err)
+			case logic.OperationCanceled:
+				return dispatchFailure(command, FailureCanceled, "command canceled", err)
+			}
 		}
 		return dispatchFailure(command, FailureOperationFailed, command+" operation failed", err)
 	}

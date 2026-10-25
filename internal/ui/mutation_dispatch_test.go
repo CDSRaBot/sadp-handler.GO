@@ -49,6 +49,17 @@ func TestDispatchMutationMapsTypedFailures(t *testing.T) {
 	}
 }
 
+func TestDispatchMutationMapsCanceledOperation(t *testing.T) {
+	service := &fakeNetwork{err: &logic.DeviceOperationError{Kind: logic.OperationCanceled, Err: context.Canceled}}
+	result, err := ui.DispatchCommand(context.Background(), ui.NetworkCommand{
+		Targets:       ui.TargetSelector{MACs: []net.HardwareAddr{{0, 1, 2, 3, 4, 5}}},
+		PasswordInput: ui.PasswordFromStdin,
+	}, ui.Dependencies{Network: service})
+	if !errors.Is(err, context.Canceled) || result.OK || result.Error == nil || result.Error.Code != ui.FailureCanceled {
+		t.Fatalf("canceled network = %#v, %v", result, err)
+	}
+}
+
 func TestDispatchMutationRejectsUnconfirmedBulkBeforeService(t *testing.T) {
 	service := &fakeActivation{}
 	result, err := ui.DispatchCommand(context.Background(), ui.ActivateCommand{
