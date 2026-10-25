@@ -109,6 +109,128 @@ func TestDiscoverWithBoundedModeUsesFullCyclesAndContinuesAfterRejectedDatagram(
 	}
 }
 
+func TestDiscoverWithBoundedModeSendsEachProbeAfterFullReceiveWindow(t *testing.T) {
+	options := validOptions()
+	options.ProbeInterval = 0
+	options.CycleTimeout = 20 * time.Millisecond
+	options.RepeatCount = 2
+	sendCount := 0
+	deps := fakeDeps()
+	deps.send = func(net.PacketConn) error {
+		sendCount++
+		return nil
+	}
+	deps.listen = func(ctx context.Context, _ net.PacketConn, _ EventHandler, _ int) error {
+		<-ctx.Done()
+		return nil
+	}
+
+	started := time.Now()
+	if err := discoverWith(context.Background(), validInterface(), options, func(context.Context, Event) error {
+		return nil
+	}, deps); err != nil {
+		t.Fatalf("discoverWith returned error: %v", err)
+	}
+	if sendCount != options.RepeatCount {
+		t.Fatalf("send count = %d, want %d", sendCount, options.RepeatCount)
+	}
+	if elapsed := time.Since(started); elapsed < options.CycleTimeout*2 {
+		t.Fatalf("session duration = %s, want at least %s for full receive windows", elapsed, options.CycleTimeout*2)
+	}
+}
+
+func TestDiscoverWithContinuousModeSendsUntilCancellation(t *testing.T) {
+	options := validOptions()
+	options.ProbeInterval = 10 * time.Millisecond
+	sendObserved := make(chan int, 8)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	deps := fakeDeps()
+	sendCount := 0
+	deps.send = func(net.PacketConn) error {
+		sendCount++
+		sendObserved <- sendCount
+		return nil
+	}
+	deps.listen = func(ctx context.Context, _ net.PacketConn, _ EventHandler, _ int) error {
+		<-ctx.Done()
+		return nil
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- discoverWith(ctx, validInterface(), options, func(context.Context, Event) error {
+			return nil
+		}, deps)
+	}()
+	for want := 1; want <= 2; want++ {
+		select {
+		case got := <-sendObserved:
+			if got != want {
+				t.Fatalf("send sequence = %d, want %d", got, want)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("did not observe send %d before timeout", want)
+		}
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatalf("discoverWith returned error after cancellation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("discoverWith did not stop after cancellation")
+	}
+}
+
+func TestDiscoverWithScheduledSendFailureCancelsSession(t *testing.T) {
+	options := validOptions()
+	options.ProbeInterval = 10 * time.Millisecond
+	sendFailure := errors.New("scheduled send failed")
+	sendObserved := make(chan int, 4)
+	deps := fakeDeps()
+	sendCount := 0
+	deps.send = func(net.PacketConn) error {
+		sendCount++
+		sendObserved <- sendCount
+		if sendCount == 2 {
+			return sendFailure
+		}
+		return nil
+	}
+	deps.listen = func(ctx context.Context, _ net.PacketConn, _ EventHandler, _ int) error {
+		<-ctx.Done()
+		return nil
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- discoverWith(context.Background(), validInterface(), options, func(context.Context, Event) error {
+			return nil
+		}, deps)
+	}()
+	select {
+	case got := <-sendObserved:
+		if got != 1 {
+			t.Fatalf("initial send sequence = %d, want 1", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("did not observe initial send before timeout")
+	}
+	select {
+	case err := <-done:
+		if err == nil || !errors.Is(err, sendFailure) {
+			t.Fatalf("error = %v, want scheduled send failure %v", err, sendFailure)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("discoverWith did not stop after scheduled send failure")
+	}
+	if sendCount != 2 {
+		t.Fatalf("send count = %d, want 2", sendCount)
+	}
+}
+
 func TestDiscoverWithPreservesCancellationAndCallbackErrorsWithoutPayloads(t *testing.T) {
 	t.Run("callback error", func(t *testing.T) {
 		want := errors.New("callback failed")

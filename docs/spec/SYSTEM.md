@@ -118,9 +118,10 @@ package. M8 initializes one logger before workflows start and injects it into
 modules through typed dependencies. The logger writes to `.\logs`, rotates
 before a file exceeds 5 MiB, and writes a blank line plus a timestamped
 start-of-run header before the first record of every process run. Each module
-and atomic procedure must declare its imports, logging points, levels, safe
-attributes, redaction rules, and event ownership in accordance with the
-logging specification.
+and atomic procedure inherits its logging contract from the
+[Common Procedure Policy](./procedures/POLICY.md) and the
+[logging specification](./logging.md). Procedure documents declare only
+operation-specific additions or stricter rules.
 
 ## 4. Data and API Contracts
 
@@ -143,7 +144,11 @@ logging specification.
 - Keep the interface mode fixed for one process invocation. TUI application commands run workflows within the TUI; changing to standard CLI mode requires a separate invocation.
 - In CLI mode, use the REPL unless `--once` is explicitly supplied; never infer one-shot execution merely because command arguments are present.
 - The TUI owns at most one continuous discovery session. Interface changes stop and join the prior session before starting another.
-- Prefer the Go standard library, including `net`, `encoding/xml`, `context`, and `log/slog`. A CLI, configuration, or logging dependency may be selected by implementation, but no optional third-party library is required by this system specification.
+- Prefer the Go standard library, including `net`, `encoding/xml`, `context`,
+  and `log/slog`. The approved TUI stack is Bubble Tea, Bubbles, and Lip
+  Gloss; M4 must use it when the TUI is implemented and declare the
+  dependencies in `go.mod`. No other CLI, TUI, configuration, or logging
+  framework is permitted without a system-specification change.
 - Keep source comments and public Go documentation in English. Document exported types and functions, and add implementation comments only when they clarify non-obvious behavior.
 
 ## 6. Error Handling, Security, and Resource Policy

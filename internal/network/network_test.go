@@ -167,6 +167,90 @@ func TestListenClosesTransferredConnectionOnCancellation(t *testing.T) {
 	}
 }
 
+func TestListenCancellationUnblocksBlockedReadAndClosesOnce(t *testing.T) {
+	connection := newBlockingPacketConn()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- Listen(ctx, connection, DefaultMaxSADPDatagramSize, func(context.Context, []byte, net.Addr) error {
+			return nil
+		})
+	}()
+
+	select {
+	case <-connection.readStarted:
+	case <-time.After(time.Second):
+		t.Fatal("Listen did not enter ReadFrom")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Listen returned error after cancellation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Listen did not stop after cancellation")
+	}
+	if !connection.closed {
+		t.Fatal("Listen did not close the transferred connection")
+	}
+	if connection.closeCount != 1 {
+		t.Fatalf("close count = %d, want 1", connection.closeCount)
+	}
+}
+
+func TestListenWrapsReadAndCloseErrors(t *testing.T) {
+	readErr := errors.New("read failed")
+	connection := &recordingPacketConn{readErr: readErr}
+	err := Listen(context.Background(), connection, DefaultMaxSADPDatagramSize, func(context.Context, []byte, net.Addr) error {
+		return nil
+	})
+	assertTransportStage(t, err, TransportRead)
+	if !errors.Is(err, readErr) {
+		t.Fatalf("error = %v, want read cause %v", err, readErr)
+	}
+
+	closeErr := errors.New("close failed")
+	connection = &recordingPacketConn{readErr: readErr, closeErr: closeErr}
+	err = Listen(context.Background(), connection, DefaultMaxSADPDatagramSize, func(context.Context, []byte, net.Addr) error {
+		return nil
+	})
+	if !errors.Is(err, readErr) || !errors.Is(err, closeErr) {
+		t.Fatalf("error = %v, want read and close causes", err)
+	}
+}
+
+func TestListenClosesConnectionForInvalidArguments(t *testing.T) {
+	testCases := []struct {
+		name  string
+		ctx   context.Context
+		conn  *recordingPacketConn
+		limit int
+	}{
+		{name: "nil context", conn: &recordingPacketConn{}, limit: DefaultMaxSADPDatagramSize},
+		{name: "invalid limit", ctx: context.Background(), conn: &recordingPacketConn{}, limit: 0},
+		{name: "nil handler", ctx: context.Background(), conn: &recordingPacketConn{}, limit: DefaultMaxSADPDatagramSize},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			var handler PacketHandler
+			if testCase.name != "nil handler" {
+				handler = func(context.Context, []byte, net.Addr) error { return nil }
+			}
+			err := Listen(testCase.ctx, testCase.conn, testCase.limit, handler)
+			if err == nil {
+				t.Fatal("Listen accepted invalid arguments")
+			}
+			if !testCase.conn.closed {
+				t.Fatal("Listen did not close the transferred connection")
+			}
+		})
+	}
+}
+
 func assertTransportStage(t *testing.T, err error, want TransportStage) {
 	t.Helper()
 	if err == nil {
@@ -182,16 +266,37 @@ func assertTransportStage(t *testing.T, err error, want TransportStage) {
 }
 
 type recordingPacketConn struct {
-	mu         sync.Mutex
-	payload    []byte
-	target     net.Addr
-	writeCount int
-	writeN     int
-	writeErr   error
-	closed     bool
+	mu            sync.Mutex
+	payload       []byte
+	target        net.Addr
+	writeCount    int
+	writeN        int
+	writeErr      error
+	closed        bool
+	closeCount    int
+	closeErr      error
+	readErr       error
+	readStarted   chan struct{}
+	readUnblock   chan struct{}
+	readStartOnce sync.Once
+	readCloseOnce sync.Once
+}
+
+func newBlockingPacketConn() *recordingPacketConn {
+	return &recordingPacketConn{
+		readStarted: make(chan struct{}),
+		readUnblock: make(chan struct{}),
+	}
 }
 
 func (c *recordingPacketConn) ReadFrom([]byte) (int, net.Addr, error) {
+	if c.readStarted != nil {
+		c.readStartOnce.Do(func() { close(c.readStarted) })
+		<-c.readUnblock
+	}
+	if c.readErr != nil {
+		return 0, nil, c.readErr
+	}
 	return 0, nil, errors.New("read not configured")
 }
 
@@ -212,9 +317,13 @@ func (c *recordingPacketConn) WriteTo(payload []byte, target net.Addr) (int, err
 
 func (c *recordingPacketConn) Close() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.closed = true
-	return nil
+	c.closeCount++
+	c.mu.Unlock()
+	if c.readUnblock != nil {
+		c.readCloseOnce.Do(func() { close(c.readUnblock) })
+	}
+	return c.closeErr
 }
 
 func (*recordingPacketConn) LocalAddr() net.Addr              { return &net.UDPAddr{} }

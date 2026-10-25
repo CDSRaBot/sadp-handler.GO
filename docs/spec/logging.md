@@ -98,9 +98,9 @@ Callers must not repeat the same event merely while wrapping an error.
 
 ## 6. Procedure logging points
 
-Every procedure specification must include its imports, events, level, safe
-attributes, redaction rule, and ownership. The required event boundary for
-each procedure is:
+Every procedure specification inherits the common logging contract in
+[Common Procedure Policy](./procedures/POLICY.md). The required event boundary
+for each procedure is:
 
 | Procedure | Required event boundary |
 |---|---|
@@ -133,9 +133,10 @@ each procedure is:
 | `Search` | query operation and result count; do not log raw secrets |
 | `SelectMode` | requested/selected mode and terminal validation failure |
 
-If a procedure is pure and has no safe diagnostic event, its specification
-must explicitly say that it does not emit records and that the caller owns
-logging at the workflow boundary.
+If a procedure is pure and has no safe diagnostic event, it emits no records
+and its workflow caller owns logging. A procedure document may add a
+procedure-specific logging rule only when it is stricter than this table and
+the common policy.
 
 ## 7. Verification
 
