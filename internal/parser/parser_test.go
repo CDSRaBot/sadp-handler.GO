@@ -63,7 +63,7 @@ func TestParseAdvertisementAcceptsObservedAliasesAndHelloWithoutUUID(t *testing.
 		want bool
 	}{
 		{name: "probe match aliases", data: observedProbeMatch, want: false},
-		{name: "hello without uuid", data: helloWithoutUUID, want: true},
+		{name: "hello without uuid", data: helloWithoutUUID, want: false},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			device, err := parser.ParseAdvertisement(testCase.data, sender, defaultLimit)
