@@ -16,6 +16,11 @@ type Interface struct {
 	Flags        net.Flags
 }
 
+type MulticastOptions struct {
+	Group netip.AddrPort
+	TTL   int
+}
+
 type AdapterErrorKind string
 
 const (
