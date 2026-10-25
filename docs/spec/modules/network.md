@@ -30,6 +30,9 @@ const (
     TransportShortWrite TransportStage = "short_write"
     TransportRead       TransportStage = "read"
     TransportDispatch   TransportStage = "dispatch"
+    TransportTimeout    TransportStage = "timeout"
+    TransportCanceled   TransportStage = "canceled"
+    TransportResponseTooLarge TransportStage = "response_too_large"
     TransportClose      TransportStage = "close"
 )
 
@@ -40,6 +43,20 @@ type TransportError struct {
 
 func (e *TransportError) Error() string
 func (e *TransportError) Unwrap() error
+
+type MutationTarget struct {
+    MAC    net.HardwareAddr
+    Sender net.Addr
+}
+
+type MutationExchange struct {
+    Sender  net.Addr
+    Data    []byte
+}
+
+type MutationTransport interface {
+    Exchange(context.Context, MutationTarget, []byte) (MutationExchange, error)
+}
 
 func Listen(ctx context.Context, conn net.PacketConn, maxDatagramSize int, handle PacketHandler) error
 func SendInquiryProbe(ctx context.Context, conn net.PacketConn, target net.Addr) error
@@ -57,6 +74,9 @@ func SendSADPDatagram(
 - `SendInquiryProbe` rejects a nil context, connection, or target and returns an error if the context is already canceled, probe construction fails, or the UDP write fails or is short. It writes one request datagram and does not start a receive loop, retry, or wait for a response.
 - `SendInquiryProbe` does not take ownership of the connection; callers may use the same connection for `Listen` after sending.
 - `SendSADPDatagram` rejects nil/empty arguments, a limit outside `1..65507`, and payloads larger than `maxDatagramSize`, writes exactly one datagram to the caller-supplied target, and does not own the connection or wait for a response. M3 uses it for SADP management XML such as activation; it does not interpret response semantics.
+- `MutationTransport.Exchange` is the only M1 boundary that may combine a management write with response acquisition. It validates the target, payload, context, and configured deadline before I/O; sends one payload; receives only bounded datagrams; and returns the response bytes together with the actual sender address. It does not parse XML, decide acceptance, or retry unless the caller supplies an explicitly bounded retry policy.
+- `MutationTransport.Exchange` owns any connection it opens and closes it on every return path. If it uses a caller-owned connection, ownership remains with the caller and the transport must document that it serializes writes and response reads. A response from a sender that does not match the target is returned for correlation handling and is never treated as a successful exchange.
+- Exchange errors are classified as validation, write, read, timeout, cancellation, oversized-response, or close failures. The underlying cause remains available through `errors.Is`/`errors.As`; error text never contains payload bytes.
 - During an M6 session, M1 `Listen` may own and read the connection while M6 serially invokes `SendInquiryProbe` or M3 invokes `SendSADPDatagram` to write a management request. The connection implementation must support one concurrent reader and one serialized writer; all writes on a session connection are serialized by its coordinator. On orderly shutdown the coordinator stops and joins the writer before canceling the listener context; if the listener fails first, it may close the connection during an in-flight write, and the coordinator preserves both errors. No other caller may use the connection after ownership transfer.
 - The handler receives the packet bytes and sender address. It must not retain or mutate the byte slice after it returns unless it first copies the data.
 - The caller owns the connection returned by M0 until passing it to `Listen`; after that transfer, the caller must not reuse it. The listener must stop promptly when the context is canceled by closing the transferred connection to unblock a pending read.
@@ -76,8 +96,9 @@ func SendSADPDatagram(
 - Use network deadlines or another supported cancellation mechanism so context cancellation reliably releases blocked reads.
 - Do not retry indefinitely. Any retry behavior must be bounded and specified by the caller or the probe contract.
 - Do not infer retransmission cadence from the capture's repeated UUID values. A call to `SendInquiryProbe` sends exactly one datagram; retry policy is not part of this contract.
-- Return a typed `TransportError` with a stable stage (`validation`, `encode`, `write`, `short_write`, `read`, `dispatch`, or `close`) and preserve the underlying cause. Context cancellation remains detectable with `errors.Is(err, context.Canceled)`; do not classify errors by message text.
+- Return a typed `TransportError` with a stable stage (`validation`, `encode`, `write`, `short_write`, `read`, `dispatch`, `timeout`, `canceled`, `response_too_large`, or `close`) and preserve the underlying cause. Context cancellation remains detectable with `errors.Is(err, context.Canceled)`; do not classify errors by message text.
+- Mutation response acquisition is transport-only. XML parsing, challenge extraction, target correlation, and accepted/rejected decisions belong to the M3 workflow procedures and must not be added to M1.
 
 ---
 
-*Level 1 module specification. See [P1.1 Listen](../procedures/network/listen.md), [P1.2 SendInquiryProbe](../procedures/network/send_probe.md), [P1.4 SendSADPDatagram](../procedures/network/send_datagram.md), and [P1.5 handleDatagram](../procedures/network/datagram_received.md) for atomic procedure contracts. End-to-end orchestration is specified by [M6](./discovery.md).*
+*Level 1 module specification. See [P1.1 Listen](../procedures/network/listen.md), [P1.2 SendInquiryProbe](../procedures/network/send_probe.md), [P1.4 SendSADPDatagram](../procedures/network/send_datagram.md), [P1.5 handleDatagram](../procedures/network/datagram_received.md), and [P1.6 MutationTransport.Exchange](../procedures/network/exchange_mutation.md) for atomic procedure contracts. End-to-end orchestration is specified by [M6](./discovery.md).*

@@ -2,9 +2,10 @@
 
 ## Status
 
-Audit completed for Issue #36. Production activation and network mutation
-services remain disabled until the device response contract is specified and
-covered by deterministic fixtures.
+Audit completed for Issue #36. Production activation and network mutation services remain disabled until the
+device response contract is specified and covered by deterministic fixtures.
+Issue #40 defines the semantic contracts; Issue #45 must derive and approve
+the executable fixtures before production implementation starts.
 
 ## Existing contract chain
 
@@ -49,9 +50,24 @@ and 4 have no specified response acquisition or correlation boundary.
 - Passwords, challenges, hashes, XML, and packet payloads must not be logged or
   returned in user-facing errors.
 
-## Required next contract
+## Contract update
 
-Before production workflow code is enabled, define and test:
+The missing workflow boundaries are now specified by:
+
+- [P1.6 MutationTransport.Exchange](../../network/exchange_mutation.md);
+- [P3.6 AcquireChallenge](./acquire_challenge.md);
+- [P3.7 ParseMutationResponse](./parse_mutation_response.md);
+- [mutation fixture catalog](./mutation_fixtures.md).
+
+The module specifications [M1](../../modules/network.md) and
+[M3](../../modules/logic.md), and the M4 dispatch implementation gate, now
+reference these boundaries. The contracts intentionally define semantic
+outcomes and correlation rules without inventing undocumented wire fields.
+Approved fixtures must establish the operation-specific response grammar.
+
+## Required test-first work
+
+Before production workflow code is enabled, Issue #45 must define and test:
 
 ```text
 ChallengeProvider:
@@ -64,10 +80,10 @@ ResponseParser:
   parse(operation, target, sender, response) -> accepted/rejected outcome
 ```
 
-The final Go signatures must be chosen after the response fixtures are
-available. The implementation must return one `DeviceOutcome` per requested
-target, preserve partial results, and map failures to
-`DeviceOperationError`.
+The final Go signatures above are normative seams. Operation-specific wire
+field mappings remain fixture-driven. The implementation must return one
+`DeviceOutcome` per requested target, preserve partial results, and map
+failures to `DeviceOperationError`.
 
 ## Acceptance gate
 
@@ -81,4 +97,3 @@ The mutation workflow task is not complete until deterministic tests cover:
 - sender/target mismatch;
 - bulk partial outcomes;
 - secret and payload redaction.
-

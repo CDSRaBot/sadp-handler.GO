@@ -41,6 +41,10 @@ const (
     OperationInvalidInput DeviceOperationErrorKind = "invalid_input"
     OperationTransport    DeviceOperationErrorKind = "transport"
     OperationRejected     DeviceOperationErrorKind = "device_rejected"
+    OperationMalformed    DeviceOperationErrorKind = "malformed_response"
+    OperationCorrelation  DeviceOperationErrorKind = "response_mismatch"
+    OperationTimeout      DeviceOperationErrorKind = "timeout"
+    OperationMissingData  DeviceOperationErrorKind = "missing_data"
     OperationCanceled     DeviceOperationErrorKind = "canceled"
 )
 
@@ -51,6 +55,47 @@ type DeviceOperationError struct {
 
 func (e *DeviceOperationError) Error() string
 func (e *DeviceOperationError) Unwrap() error
+
+type MutationOperation string
+
+const (
+    MutationActivation MutationOperation = "activation"
+    MutationNetwork    MutationOperation = "network"
+)
+
+type MutationTarget struct {
+    MAC    net.HardwareAddr
+    Sender net.Addr
+}
+
+type Challenge struct {
+    Value     string
+    TargetMAC net.HardwareAddr
+    Sender    net.Addr
+    ExpiresAt time.Time
+}
+
+type ChallengeProvider interface {
+    Acquire(context.Context, MutationTarget) (Challenge, error)
+}
+
+type MutationDecisionStatus string
+
+const (
+    MutationAccepted MutationDecisionStatus = "accepted"
+    MutationRejected MutationDecisionStatus = "rejected"
+)
+
+type MutationDecision struct {
+    Operation MutationOperation
+    Target    MutationTarget
+    Status    MutationDecisionStatus
+    Reason    string
+}
+
+type ResponseParser interface {
+    Parse(MutationOperation, MutationTarget, net.Addr, []byte) (MutationDecision, error)
+}
 
 func ValidatePassword(password string) error
 func BuildActivationXML(request ActivationRequest) ([]byte, error)
@@ -68,6 +113,9 @@ func BuildNetworkXML(
 - `BuildNetworkXML` receives the target device MAC and security inputs separately from network configuration; it requires the challenge-response behavior specified by the related procedures and must not silently fall back to plaintext credentials.
 - Operation-level APIs must accept `context.Context` when they perform network or other blocking I/O and return a result or error for each target device.
 - Operation APIs return `DeviceOperationError` for caller-branchable failures. `Kind` is stable and callers use `errors.As`; `Unwrap` preserves the cause. Context cancellation must also remain detectable with `errors.Is(err, context.Canceled)`.
+- `ChallengeProvider` owns challenge acquisition semantics; it must return a challenge scoped to the requested MAC and sender with a finite expiry. It must never return a challenge for another target, an expired challenge, or a challenge whose source cannot be authenticated by the response-correlation contract.
+- `ResponseParser` receives raw bytes only after M1 has preserved the sender. It validates the operation-specific response grammar from approved fixtures, rejects malformed or unexpected responses, and returns either `accepted` or `rejected`; it never turns an unknown response into success.
+- `MutationDecision.Reason` is a safe, bounded summary and must not contain raw response bytes, XML, passwords, challenges, hashes, or other secret fields. A rejected decision is a device outcome, not a parser success.
 
 ## 4. Security and Error Policy
 
@@ -77,6 +125,7 @@ func BuildNetworkXML(
 - Return errors with operation and device context while avoiding disclosure of credentials. Preserve wrapped causes for callers.
 - Do not use `panic` for invalid requests, device rejections, or transport failures.
 - Do not copy the Python reference's missing-challenge fallback, which inserts the plaintext password into the network-configuration XML. A missing challenge must fail closed unless an explicitly named, separately reviewed compatibility mode is required and approved.
+- The mutation workflow must acquire a challenge before building a network request, exchange the request through M1, and parse the response before reporting success. A request builder return value alone is never an operation success.
 
 ## 5. Testing Requirements
 
@@ -84,7 +133,8 @@ func BuildNetworkXML(
 - Verify XML element names, casing, escaping, encoding, and optional-field behavior against protocol fixtures.
 - Test successful and rejected device responses, timeouts, cancellation, and per-device outcomes in bulk operations.
 - Use deterministic test inputs; never include production credentials or secrets in fixtures.
+- Test malformed and unexpected responses, expired or target-mismatched challenges, sender/target mismatch, duplicate targets, partial bulk failure, and redaction of all security material.
 
 ---
 
-*Level 1 module specification. See [P3.0 ValidatePassword](../procedures/logic/validate_password.md), [P3.1 BuildActivationXML](../procedures/logic/build_activation.md), [P3.2 BuildNetworkXML](../procedures/logic/build_network.md), and [P3.5 CalculateHash](../procedures/logic/calculate_hash.md). Challenge extraction and device result parsing are not yet specified as executable operations.*
+*Level 1 module specification. See [P3.0 ValidatePassword](../procedures/logic/validate_password.md), [P3.1 BuildActivationXML](../procedures/logic/build_activation.md), [P3.2 BuildNetworkXML](../procedures/logic/build_network.md), [P3.5 CalculateHash](../procedures/logic/calculate_hash.md), [P3.6 AcquireChallenge](../procedures/logic/acquire_challenge.md), [P3.7 ParseMutationResponse](../procedures/logic/parse_mutation_response.md), and the [mutation fixture catalog](../procedures/logic/mutation_fixtures.md).*
