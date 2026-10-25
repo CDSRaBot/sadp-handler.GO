@@ -9,6 +9,10 @@ const (
 	OperationInvalidInput DeviceOperationErrorKind = "invalid_input"
 	OperationTransport    DeviceOperationErrorKind = "transport"
 	OperationRejected     DeviceOperationErrorKind = "device_rejected"
+	OperationMalformed    DeviceOperationErrorKind = "malformed_response"
+	OperationCorrelation  DeviceOperationErrorKind = "response_mismatch"
+	OperationTimeout      DeviceOperationErrorKind = "timeout"
+	OperationMissingData  DeviceOperationErrorKind = "missing_data"
 	OperationCanceled     DeviceOperationErrorKind = "canceled"
 )
 
