@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/CDSRaBot/sadp-handler.GO/internal/adapter"
@@ -53,6 +54,10 @@ func Compose(settings config.Settings, baseDir string) (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
+	localizationFS, err := newLocalizationFS(root, settings.Localization.Directory)
+	if err != nil {
+		return RuntimeConfig{}, fmt.Errorf("create localization filesystem: %w", err)
+	}
 	group, err := netip.ParseAddr(settings.Network.MulticastGroup)
 	if err != nil {
 		return RuntimeConfig{}, fmt.Errorf("parse multicast group: %w", err)
@@ -79,7 +84,7 @@ func Compose(settings config.Settings, baseDir string) (RuntimeConfig, error) {
 			Language: settings.UI.Language,
 			Once:     settings.UI.Once,
 		},
-		Localization: LocalizationRuntimeConfig{FS: os.DirFS(root)},
+		Localization: LocalizationRuntimeConfig{FS: localizationFS},
 		Network: adapter.MulticastOptions{
 			Group: netip.AddrPortFrom(group, uint16(settings.Network.MulticastPort)),
 			TTL:   settings.Network.MulticastTTL,
@@ -93,6 +98,30 @@ func Compose(settings config.Settings, baseDir string) (RuntimeConfig, error) {
 		},
 		LogLevel: level,
 	}, nil
+}
+
+type localizationFS struct {
+	root fs.FS
+}
+
+func newLocalizationFS(root, directory string) (fs.FS, error) {
+	subtree, err := fs.Sub(os.DirFS(root), filepath.Clean(directory))
+	if err != nil {
+		return nil, err
+	}
+	return localizationFS{root: subtree}, nil
+}
+
+func (filesystem localizationFS) Open(name string) (fs.File, error) {
+	if !fs.ValidPath(name) {
+		return nil, fs.ErrInvalid
+	}
+	if name == "locales" {
+		name = "."
+	} else if strings.HasPrefix(name, "locales/") {
+		name = strings.TrimPrefix(name, "locales/")
+	}
+	return filesystem.root.Open(name)
 }
 
 func BuildDependencies(runtime RuntimeConfig, services ServiceSet) ApplicationDependencies {

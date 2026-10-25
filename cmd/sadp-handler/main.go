@@ -54,7 +54,6 @@ func run() int {
 			Version:          "dev",
 		},
 	})
-	dependencies.Services.UI.Config = runtime.UI
 	return ui.RunCLIWithDefaults(
 		context.Background(),
 		os.Args[1:],
