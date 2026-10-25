@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/CDSRaBot/sadp-handler.GO/internal/i18n"
 )
 
 const (
@@ -305,8 +307,8 @@ func validate(settings Settings) error {
 	if settings.UI.Format != "text" && settings.UI.Format != "json" {
 		return invalidValue("ui.format", "must be text or json")
 	}
-	if strings.TrimSpace(settings.UI.Language) == "" {
-		return invalidValue("ui.language", "must not be empty")
+	if err := i18n.ValidateLocaleCode(settings.UI.Language); err != nil {
+		return invalidValue("ui.language", "must be a valid locale code")
 	}
 	if settings.UI.Once && settings.UI.Mode != "no" {
 		return invalidCombination("ui.once", "requires ui.mode=no")

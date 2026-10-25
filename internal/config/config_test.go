@@ -117,6 +117,12 @@ func TestLoadValidatesDocumentedBoundaries(t *testing.T) {
 		{"invalid duration", func(document map[string]any) {
 			document["discovery"].(map[string]any)["cycle_timeout"] = "not-a-duration"
 		}},
+		{"negative duration", func(document map[string]any) {
+			document["discovery"].(map[string]any)["cycle_timeout"] = "-1s"
+		}},
+		{"invalid locale code", func(document map[string]any) {
+			document["ui"].(map[string]any)["language"] = "ru/../en"
+		}},
 		{"invalid logging level", func(document map[string]any) {
 			document["logging"].(map[string]any)["level"] = "trace"
 		}},
