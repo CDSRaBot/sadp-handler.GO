@@ -167,8 +167,8 @@ func TestOpenMulticastWithValidatesArgumentsAndPreservesConnection(t *testing.T)
 				return nil, nil
 			})
 			var adapterErr *AdapterError
-			if !errors.As(err, &adapterErr) || adapterErr.Kind != AdapterInvalidInterface {
-				t.Fatalf("error = %T %v, want invalid-interface AdapterError", err, err)
+			if !errors.As(err, &adapterErr) || adapterErr.Kind != AdapterInvalidMulticast {
+				t.Fatalf("error = %T %v, want invalid-multicast AdapterError", err, err)
 			}
 		})
 	}

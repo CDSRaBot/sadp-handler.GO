@@ -2,11 +2,15 @@ package adapter
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
-)
+	"os"
+	"path"
+	"strings"
 
-var errNotImplemented = errors.New("not implemented")
+	"golang.org/x/net/ipv4"
+)
 
 type Interface struct {
 	Index        int
@@ -25,6 +29,8 @@ type AdapterErrorKind string
 
 const (
 	AdapterInvalidInterface    AdapterErrorKind = "invalid_interface"
+	AdapterInvalidMulticast    AdapterErrorKind = "invalid_multicast"
+	AdapterBindFailed          AdapterErrorKind = "bind_failed"
 	AdapterPermissionDenied    AdapterErrorKind = "permission_denied"
 	AdapterUnsupportedPlatform AdapterErrorKind = "unsupported_platform"
 )
@@ -52,18 +58,56 @@ func (e *AdapterError) Unwrap() error {
 }
 
 func ListInterfaces() ([]Interface, error) {
-	return nil, errNotImplemented
+	return listInterfacesWith(net.Interfaces, func(iface net.Interface) ([]net.Addr, error) {
+		return iface.Addrs()
+	})
 }
 
 func listInterfacesWith(
 	enumerate func() ([]net.Interface, error),
 	addresses func(net.Interface) ([]net.Addr, error),
 ) ([]Interface, error) {
-	return nil, errNotImplemented
+	interfaces, err := enumerate()
+	if err != nil {
+		return nil, fmt.Errorf("enumerate network interfaces: %w", err)
+	}
+
+	result := make([]Interface, 0, len(interfaces))
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+
+		addrs, err := addresses(iface)
+		if err != nil {
+			return nil, fmt.Errorf("inspect addresses for interface %q: %w", iface.Name, err)
+		}
+
+		ipv4 := make([]netip.Prefix, 0, len(addrs))
+		for _, addr := range addrs {
+			prefix, ok := ipv4Prefix(addr)
+			if ok {
+				ipv4 = append(ipv4, prefix)
+			}
+		}
+		if len(ipv4) == 0 {
+			continue
+		}
+
+		hardware := append(net.HardwareAddr(nil), iface.HardwareAddr...)
+		result = append(result, Interface{
+			Index:        iface.Index,
+			Name:         iface.Name,
+			HardwareAddr: hardware,
+			IPv4Addrs:    ipv4,
+			Flags:        iface.Flags,
+		})
+	}
+	return result, nil
 }
 
 func OpenMulticast(iface Interface, group netip.AddrPort) (net.PacketConn, error) {
-	return nil, errNotImplemented
+	return openMulticastWith(iface, group, openMulticast)
 }
 
 func openMulticastWith(
@@ -71,16 +115,111 @@ func openMulticastWith(
 	group netip.AddrPort,
 	open func(Interface, netip.AddrPort) (net.PacketConn, error),
 ) (net.PacketConn, error) {
-	return nil, errNotImplemented
+	if !eligibleInterface(iface) {
+		return nil, &AdapterError{Kind: AdapterInvalidInterface, Err: errors.New("interface is not eligible")}
+	}
+	if !group.IsValid() || !group.Addr().Is4() || !group.Addr().IsMulticast() || group.Port() == 0 {
+		return nil, &AdapterError{Kind: AdapterInvalidMulticast, Err: errors.New("group must be an IPv4 multicast address with a non-zero port")}
+	}
+
+	connection, err := open(iface, group)
+	if err != nil {
+		kind := AdapterBindFailed
+		if errors.Is(err, os.ErrPermission) {
+			kind = AdapterPermissionDenied
+		}
+		return nil, &AdapterError{Kind: kind, Err: fmt.Errorf("open multicast on interface %q: %w", iface.Name, err)}
+	}
+	if connection == nil {
+		return nil, &AdapterError{Kind: AdapterBindFailed, Err: errors.New("multicast opener returned a nil connection")}
+	}
+	return connection, nil
 }
 
 func getLinuxMAC(interfaceName string) (net.HardwareAddr, error) {
-	return nil, errNotImplemented
+	return getLinuxMACFrom(interfaceName, os.ReadFile)
 }
 
 func getLinuxMACFrom(
 	interfaceName string,
 	readFile func(string) ([]byte, error),
 ) (net.HardwareAddr, error) {
-	return nil, errNotImplemented
+	if interfaceName == "" || interfaceName == "." || interfaceName == ".." ||
+		strings.ContainsAny(interfaceName, `/\`) || strings.ContainsRune(interfaceName, 0) {
+		return nil, fmt.Errorf("invalid interface name")
+	}
+
+	sysfsPath := path.Join("/sys/class/net", interfaceName, "address")
+	data, err := readFile(sysfsPath)
+	if err != nil {
+		return nil, fmt.Errorf("read Linux MAC for interface %q: %w", interfaceName, err)
+	}
+	hardware, err := net.ParseMAC(strings.TrimSpace(string(data)))
+	if err != nil || len(hardware) != 6 {
+		if err == nil {
+			err = errors.New("address is not EUI-48")
+		}
+		return nil, fmt.Errorf("parse Linux MAC for interface %q: %w", interfaceName, err)
+	}
+	return append(net.HardwareAddr(nil), hardware...), nil
+}
+
+func ipv4Prefix(addr net.Addr) (netip.Prefix, bool) {
+	switch value := addr.(type) {
+	case *net.IPNet:
+		ip := value.IP.To4()
+		if ip == nil || ip.IsUnspecified() {
+			return netip.Prefix{}, false
+		}
+		parsed, ok := netip.AddrFromSlice(ip)
+		if !ok {
+			return netip.Prefix{}, false
+		}
+		ones, bits := value.Mask.Size()
+		if bits != 32 || ones < 0 {
+			return netip.Prefix{}, false
+		}
+		return netip.PrefixFrom(parsed, ones), true
+	case *net.IPAddr:
+		ip := value.IP.To4()
+		if ip == nil || ip.IsUnspecified() {
+			return netip.Prefix{}, false
+		}
+		parsed, ok := netip.AddrFromSlice(ip)
+		if !ok {
+			return netip.Prefix{}, false
+		}
+		return netip.PrefixFrom(parsed, 32), true
+	default:
+		return netip.Prefix{}, false
+	}
+}
+
+func eligibleInterface(iface Interface) bool {
+	if iface.Index <= 0 || iface.Name == "" || iface.Flags&net.FlagUp == 0 ||
+		iface.Flags&net.FlagLoopback != 0 || len(iface.IPv4Addrs) == 0 {
+		return false
+	}
+	for _, prefix := range iface.IPv4Addrs {
+		if prefix.IsValid() && prefix.Addr().Is4() && !prefix.Addr().IsUnspecified() {
+			return true
+		}
+	}
+	return false
+}
+
+func openMulticast(iface Interface, group netip.AddrPort) (net.PacketConn, error) {
+	address := &net.UDPAddr{
+		IP:   net.IP(group.Addr().AsSlice()),
+		Port: int(group.Port()),
+	}
+	connection, err := net.ListenMulticastUDP("udp4", &net.Interface{Index: iface.Index, Name: iface.Name}, address)
+	if err != nil {
+		return nil, err
+	}
+	if err := ipv4.NewPacketConn(connection).SetMulticastTTL(64); err != nil {
+		_ = connection.Close()
+		return nil, fmt.Errorf("set multicast TTL: %w", err)
+	}
+	return connection, nil
 }
