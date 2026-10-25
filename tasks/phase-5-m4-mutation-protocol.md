@@ -2,6 +2,8 @@
 
 **GitHub Issue:** #36 — https://github.com/CDSRaBot/sadp-handler.GO/issues/36
 
+**Audit artifact:** `docs/spec/procedures/logic/mutation_workflow_audit.md`
+
 ## Context
 
 Follow `docs/ru/DEVELOPMENT_GUIDE.md`, Phases 1–8. The source contracts are:
@@ -37,6 +39,13 @@ be enabled by guessing an undocumented device response format.
 - Tests in `internal/logic`, `internal/network`, and `internal/ui`.
 - Updated change report and Issue #36 status.
 
+## Current audit result
+
+The request builders and M1 send primitive exist, but challenge acquisition,
+management-response parsing, and response correlation are not specified by the
+repository. Production mutation implementation is therefore blocked until
+fixtures and these contracts are approved.
+
 ## Acceptance criteria
 
 - Tests are written before implementation for each new protocol contract.
@@ -45,4 +54,3 @@ be enabled by guessing an undocumented device response format.
 - All blocking operations accept `context.Context` and close resources.
 - `go test -race ./...`, `go vet ./...`, and `go build ./...` pass.
 - Issue #36 is closed only after the end-to-end mutation acceptance checks pass.
-

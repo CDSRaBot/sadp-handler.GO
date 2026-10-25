@@ -11,7 +11,7 @@ deliverables, dependencies, and acceptance criteria used for implementation.
 |---|---:|---|
 | `phase-4-p7-configuration.md` | #35 | completed |
 | `phase-5-m8-acceptance.md` | #37 | acceptance pending |
-| `phase-5-m4-mutation-protocol.md` | #36 | protocol audit pending |
+| `phase-5-m4-mutation-protocol.md` | #36 | audit completed; protocol contract blocked |
 | `phase-5-verification-gate.md` | #38 | blocked by #36 and #37 |
 
 Completed commits currently include:
@@ -21,3 +21,6 @@ Completed commits currently include:
 - M4 mutation seams and outcomes: `cd02e62`, `1b9d461`, `f3abe5c`
 - CLI outcome rendering: `73c6945`
 
+Current audit artifact:
+
+- `docs/spec/procedures/logic/mutation_workflow_audit.md`
