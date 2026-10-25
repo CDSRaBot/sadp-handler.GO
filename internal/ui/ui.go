@@ -148,6 +148,14 @@ type LocalizationService interface {
 	ExportLocaleTemplate(context.Context, string) error
 }
 
+type ActivationService interface {
+	Activate(context.Context, ActivateCommand) ([]DeviceOutcome, error)
+}
+
+type NetworkService interface {
+	ConfigureNetwork(context.Context, NetworkCommand) ([]DeviceOutcome, error)
+}
+
 type RuntimeUIConfig struct {
 	Mode     string
 	Format   string
@@ -163,6 +171,8 @@ type Dependencies struct {
 	InterfaceIndex   *int
 	DiscoveryPolicy  DiscoveryPolicy
 	Locales          LocalizationService
+	Activation       ActivationService
+	Network          NetworkService
 	Version          string
 	Help             string
 }
@@ -237,9 +247,9 @@ func DispatchCommand(ctx context.Context, command Command, dependencies Dependen
 	case DiscoverCommand:
 		return dispatchDiscover(ctx, value, dependencies)
 	case ActivateCommand:
-		return dispatchUnsupported("activate")
+		return dispatchActivate(ctx, value, dependencies)
 	case NetworkCommand:
-		return dispatchUnsupported("network")
+		return dispatchNetwork(ctx, value, dependencies)
 	case LanguageCommand:
 		return dispatchLanguage(ctx, value, dependencies)
 	case HelpCommand:
@@ -276,6 +286,7 @@ func dispatchDiscover(ctx context.Context, command DiscoverCommand, dependencies
 	if dependencies.Discovery == nil {
 		return dispatchFailure("discover", FailureOperationFailed, "discovery service is unavailable", errors.New("discovery service is unavailable"))
 	}
+
 	if err := validateDiscoveryPolicy(command.Policy); err != nil {
 		return dispatchFailure("discover", FailureInvalidArgument, "invalid discovery policy", err)
 	}
@@ -287,6 +298,66 @@ func dispatchDiscover(ctx context.Context, command DiscoverCommand, dependencies
 		return dispatchFailure("discover", FailureOperationFailed, "discovery failed", err)
 	}
 	return CommandResult{Command: "discover", OK: true, Discovery: devices}, nil
+}
+
+func dispatchActivate(ctx context.Context, command ActivateCommand, dependencies Dependencies) (CommandResult, error) {
+	if err := validateMutationCommand(command.Targets, command.PasswordInput, command.Confirm); err != nil {
+		return dispatchFailure("activate", FailureInvalidArgument, "invalid activation command", err)
+	}
+	if dependencies.Activation == nil {
+		return dispatchUnsupported("activate")
+	}
+	outcomes, err := dependencies.Activation.Activate(ctx, command)
+	return dispatchMutationResult(ctx, "activate", outcomes, err)
+}
+
+func dispatchNetwork(ctx context.Context, command NetworkCommand, dependencies Dependencies) (CommandResult, error) {
+	if err := validateMutationCommand(command.Targets, command.PasswordInput, command.Confirm); err != nil {
+		return dispatchFailure("network", FailureInvalidArgument, "invalid network command", err)
+	}
+	if dependencies.Network == nil {
+		return dispatchUnsupported("network")
+	}
+	outcomes, err := dependencies.Network.ConfigureNetwork(ctx, command)
+	return dispatchMutationResult(ctx, "network", outcomes, err)
+}
+
+func validateMutationCommand(targets TargetSelector, password PasswordSource, confirmed bool) error {
+	if password != PasswordFromStdin {
+		return errors.New("password must be supplied through stdin")
+	}
+	if len(targets.MACs) == 0 {
+		return errors.New("at least one target device is required")
+	}
+	if len(targets.MACs) > 1 && !confirmed {
+		return errors.New("bulk mutation requires confirmation")
+	}
+	seen := make(map[string]struct{}, len(targets.MACs))
+	for _, mac := range targets.MACs {
+		if len(mac) != 6 {
+			return errors.New("target MAC must be an EUI-48 address")
+		}
+		key := mac.String()
+		if _, ok := seen[key]; ok {
+			return errors.New("duplicate target device")
+		}
+		seen[key] = struct{}{}
+	}
+	return nil
+}
+
+func dispatchMutationResult(ctx context.Context, command string, outcomes []DeviceOutcome, err error) (CommandResult, error) {
+	if err != nil {
+		if isCancellation(err) {
+			return dispatchFailure(command, FailureCanceled, "command canceled", err)
+		}
+		var operationErr *logic.DeviceOperationError
+		if errors.As(err, &operationErr) && operationErr.Kind == logic.OperationInvalidInput {
+			return dispatchFailure(command, FailureInvalidArgument, "invalid device operation", err)
+		}
+		return dispatchFailure(command, FailureOperationFailed, command+" operation failed", err)
+	}
+	return CommandResult{Command: command, OK: true, Devices: outcomes}, nil
 }
 
 func dispatchLanguage(ctx context.Context, command LanguageCommand, dependencies Dependencies) (CommandResult, error) {
