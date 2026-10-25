@@ -27,9 +27,16 @@ func TestValidatePassword_Errors(t *testing.T) {
 		{"upper + digit", "AB12CDEF", false},
 		{"upper + special", "AB!@CDEF", false},
 		{"digit + special", "12!@34AB", false},
-		{"unicode letters", "ПримерПароля", false}, // lower and upper letter classes
-		{"unicode letters + digit", "Пароль123", false},
-		{"space as special", "Abcdef1 ", false},
+		{"unicode letters", "ПримерПароля", true},
+		{"unicode letters + digit", "Пароль123", true},
+		{"accented letter", "Abcdefé1", true},
+		{"unicode digit", "Abcdef١!", true},
+		{"unicode symbol", "Abcdef1€", true},
+		{"space as special", "Abcdef1 ", true},
+		{"ascii specials first range", "Abcdef1!/", false},
+		{"ascii specials second range", "Abcdef1:@", false},
+		{"ascii specials third range", "Abcdef1[\\]^_`", false},
+		{"ascii specials fourth range", "Abcdef1{~", false},
 		{"control char", "Abcdef\x00", true},
 	}
 	for _, tc := range cases {
@@ -55,10 +62,10 @@ func TestValidatePassword_BoundariesAndAllClasses(t *testing.T) {
 		pwd     string
 		wantErr bool
 	}{
-		{"len=7", "Abc1!de", true},               // 7 руно́в – должно быть ошибкой
+		{"len=7", "Abc1!de", true},               // 7 ASCII characters
 		{"len=8 ok", "Abc1!def", false},          // ровно 8 – успешно
 		{"len=16 ok", "Abcdef123456!@#$", false}, // ровно 16 – успешно
-		{"len=17", "Abcdef123456!@#$x", true},    // 17 руно́в – ошибка
+		{"len=17", "Abcdef123456!@#$x", true},    // 17 ASCII characters
 		{"all four classes", "Abc1!def", false},  // lower, upper, digit, special
 	}
 	for _, tc := range cases {

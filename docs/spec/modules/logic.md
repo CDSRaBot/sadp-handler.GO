@@ -16,7 +16,7 @@ The SADP activation request is addressed by the device MAC and uses the XML fiel
 
 M1 defines both inquiry-probe transmission and generic SADP datagram transmission. XML builders produce request payloads; they do not themselves provide end-to-end activation or network-configuration operations. Those workflows must use the context-aware transport API and explicitly interpret per-device outcomes before being enabled.
 
-The selected activation variant is SADP XML with `TargetMAC` identifying the device; it is not ISAPI HTTP activation. P3.1 defines the request shape, with its Python-derived optional fields retained as compatibility requirements pending end-to-end activation outcome testing. For network configuration, the SHA-256 calculation over UTF-8 `password + challenge` is confirmed by practical experiments and is normative. Target MAC text is uppercase, colon-separated EUI-48.
+The selected activation variant is SADP XML with `TargetMAC` identifying the device; it is not ISAPI HTTP activation. P3.1 defines the request shape, with its Python-derived optional fields retained as compatibility requirements pending end-to-end activation outcome testing. Activation passwords are restricted to ASCII letters, ASCII digits, and printable ASCII special characters; spaces and all non-ASCII characters are rejected. For network configuration, the SHA-256 calculation over UTF-8 `password + challenge` is confirmed by practical experiments and is normative. Target MAC text is uppercase, colon-separated EUI-48.
 
 ## 3. Go API Contract
 

@@ -14,12 +14,14 @@ func TestValidatePasswordUsesRuneLengthAndRejectsControls(t *testing.T) {
 		password string
 		wantErr  bool
 	}{
-		{name: "eight unicode code points", password: "АбвГд123", wantErr: false},
-		{name: "seven unicode code points", password: "АбвГд12", wantErr: true},
-		{name: "combining mark counts as a special rune", password: "Abcdef1\u0301", wantErr: false},
+		{name: "unicode letters are rejected", password: "АбвГд123", wantErr: true},
+		{name: "unicode accented letter is rejected", password: "Abcdefé1", wantErr: true},
+		{name: "unicode digit is rejected", password: "Abcdef١!", wantErr: true},
+		{name: "combining mark is rejected", password: "Abcdef1\u0301", wantErr: true},
 		{name: "newline is rejected", password: "Abcdef1\n", wantErr: true},
 		{name: "tab is rejected", password: "Abcdef1\t", wantErr: true},
-		{name: "space is a permitted special character", password: "Abcdef1 ", wantErr: false},
+		{name: "space is rejected", password: "Abcdef1 ", wantErr: true},
+		{name: "non-ASCII symbol is rejected", password: "Abcdef1€", wantErr: true},
 		{name: "invalid UTF-8 is rejected", password: string([]byte{'A', 'b', 'c', 'd', 'e', 'f', '1', 0xff}), wantErr: true},
 	}
 	for _, testCase := range testCases {
