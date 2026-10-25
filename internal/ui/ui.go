@@ -308,7 +308,7 @@ func dispatchActivate(ctx context.Context, command ActivateCommand, dependencies
 		return dispatchUnsupported("activate")
 	}
 	outcomes, err := dependencies.Activation.Activate(ctx, command)
-	return dispatchMutationResult(ctx, "activate", outcomes, err)
+	return dispatchMutationResult(ctx, "activate", command.Targets, outcomes, err)
 }
 
 func dispatchNetwork(ctx context.Context, command NetworkCommand, dependencies Dependencies) (CommandResult, error) {
@@ -319,7 +319,7 @@ func dispatchNetwork(ctx context.Context, command NetworkCommand, dependencies D
 		return dispatchUnsupported("network")
 	}
 	outcomes, err := dependencies.Network.ConfigureNetwork(ctx, command)
-	return dispatchMutationResult(ctx, "network", outcomes, err)
+	return dispatchMutationResult(ctx, "network", command.Targets, outcomes, err)
 }
 
 func validateMutationCommand(targets TargetSelector, password PasswordSource, confirmed bool) error {
@@ -346,23 +346,32 @@ func validateMutationCommand(targets TargetSelector, password PasswordSource, co
 	return nil
 }
 
-func dispatchMutationResult(ctx context.Context, command string, outcomes []DeviceOutcome, err error) (CommandResult, error) {
+func dispatchMutationResult(ctx context.Context, command string, targets TargetSelector, outcomes []DeviceOutcome, err error) (CommandResult, error) {
 	if err != nil {
 		if isCancellation(err) {
-			return dispatchFailure(command, FailureCanceled, "command canceled", err)
+			return mutationFailure(command, FailureCanceled, "command canceled", outcomes, err)
 		}
 		var operationErr *logic.DeviceOperationError
 		if errors.As(err, &operationErr) {
 			switch operationErr.Kind {
 			case logic.OperationInvalidInput:
-				return dispatchFailure(command, FailureInvalidArgument, "invalid device operation", err)
+				return mutationFailure(command, FailureInvalidArgument, "invalid device operation", outcomes, err)
 			case logic.OperationCanceled:
-				return dispatchFailure(command, FailureCanceled, "command canceled", err)
+				return mutationFailure(command, FailureCanceled, "command canceled", outcomes, err)
 			}
 		}
-		return dispatchFailure(command, FailureOperationFailed, command+" operation failed", err)
+		return mutationFailure(command, FailureOperationFailed, command+" operation failed", outcomes, err)
+	}
+	if len(outcomes) == 0 && len(targets.MACs) > 0 {
+		return mutationFailure(command, FailureOperationFailed, "mutation service returned no device outcomes", outcomes, errors.New("mutation service returned no device outcomes"))
 	}
 	return CommandResult{Command: command, OK: true, Devices: outcomes}, nil
+}
+
+func mutationFailure(command, code, message string, outcomes []DeviceOutcome, cause error) (CommandResult, error) {
+	result, err := dispatchFailure(command, code, message, cause)
+	result.Devices = outcomes
+	return result, err
 }
 
 func dispatchLanguage(ctx context.Context, command LanguageCommand, dependencies Dependencies) (CommandResult, error) {

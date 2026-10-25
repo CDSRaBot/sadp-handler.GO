@@ -27,6 +27,12 @@ func (f *fakeNetwork) ConfigureNetwork(context.Context, ui.NetworkCommand) ([]ui
 	return nil, f.err
 }
 
+type partialNetwork struct{}
+
+func (partialNetwork) ConfigureNetwork(context.Context, ui.NetworkCommand) ([]ui.DeviceOutcome, error) {
+	return []ui.DeviceOutcome{{MAC: "00:11:22:33:44:55", Status: "updated"}}, errors.New("second device rejected")
+}
+
 func TestDispatchMutationRoutesInjectedServices(t *testing.T) {
 	service := &fakeActivation{}
 	result, err := ui.DispatchCommand(context.Background(), ui.ActivateCommand{
@@ -57,6 +63,19 @@ func TestDispatchMutationMapsCanceledOperation(t *testing.T) {
 	}, ui.Dependencies{Network: service})
 	if !errors.Is(err, context.Canceled) || result.OK || result.Error == nil || result.Error.Code != ui.FailureCanceled {
 		t.Fatalf("canceled network = %#v, %v", result, err)
+	}
+}
+
+func TestDispatchMutationPreservesPartialOutcomes(t *testing.T) {
+	result, err := ui.DispatchCommand(context.Background(), ui.NetworkCommand{
+		Targets: ui.TargetSelector{
+			MACs: []net.HardwareAddr{{0, 1, 2, 3, 4, 5}, {6, 7, 8, 9, 10, 11}},
+		},
+		PasswordInput: ui.PasswordFromStdin,
+		Confirm:       true,
+	}, ui.Dependencies{Network: partialNetwork{}})
+	if err == nil || result.OK || result.Error == nil || result.Error.Code != ui.FailureOperationFailed || len(result.Devices) != 1 {
+		t.Fatalf("partial network = %#v, %v", result, err)
 	}
 }
 
