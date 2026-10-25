@@ -73,3 +73,37 @@ func TestRunCLIREPLContinuesAfterParseError(t *testing.T) {
 		}
 	}
 }
+
+func TestWriteTextResultRendersDiscoveryAndMutationOutcomes(t *testing.T) {
+	var discoveryOutput, discoveryError bytes.Buffer
+	exitCode := ui.RunCLIWithTerminalState(context.Background(), []string{"--ui=no", "--once", "discover", "--interface", "1", "--timeout", "1s"},
+		strings.NewReader(""), &discoveryOutput, &discoveryError, false, false, ui.Dependencies{Discovery: runtimeDiscovery{}})
+	if exitCode != ui.ExitSuccess {
+		t.Fatalf("discovery exit code: %d; output=%q; error=%q", exitCode, discoveryOutput.String(), discoveryError.String())
+	}
+	if !strings.Contains(discoveryOutput.String(), "00:11:22:33:44:55 192.0.2.10 DS-1 192.0.2.1") {
+		t.Fatalf("discovery output = %q", discoveryOutput.String())
+	}
+
+	var mutationOutput bytes.Buffer
+	exitCode = ui.RunCLIWithTerminalState(context.Background(), []string{"--ui=no", "--once", "activate", "--device", "00:11:22:33:44:55", "--password-stdin"},
+		strings.NewReader("secret\n"), &mutationOutput, &bytes.Buffer{}, false, false, ui.Dependencies{Activation: runtimeActivation{}})
+	if exitCode != ui.ExitSuccess {
+		t.Fatalf("mutation exit code: %d", exitCode)
+	}
+	if !strings.Contains(mutationOutput.String(), "00:11:22:33:44:55 activated") {
+		t.Fatalf("mutation output = %q", mutationOutput.String())
+	}
+}
+
+type runtimeDiscovery struct{}
+
+func (runtimeDiscovery) Discover(context.Context, *int, ui.DiscoveryPolicy) ([]ui.DiscoveredDevice, error) {
+	return []ui.DiscoveredDevice{{MAC: "00:11:22:33:44:55", IPv4: "192.0.2.10", Model: "DS-1", Sender: "192.0.2.1"}}, nil
+}
+
+type runtimeActivation struct{}
+
+func (runtimeActivation) Activate(context.Context, ui.ActivateCommand) ([]ui.DeviceOutcome, error) {
+	return []ui.DeviceOutcome{{MAC: "00:11:22:33:44:55", Status: "activated"}}, nil
+}

@@ -215,7 +215,7 @@ func parseDiscover(args []string) (Command, error) {
 	}
 	return DiscoverCommand{
 		InterfaceIndex: index,
-		Policy:         DiscoveryPolicy{CycleTimeout: timeout, RepeatCount: repeat},
+		Policy:         DiscoveryPolicy{CycleTimeout: timeout, RepeatCount: repeat, MaxSADPDatagramSize: 1500},
 	}, nil
 }
 

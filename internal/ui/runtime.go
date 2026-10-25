@@ -224,8 +224,9 @@ func writeResult(writer io.Writer, format string, result CommandResult) error {
 
 func writeTextResult(writer io.Writer, result CommandResult) error {
 	if result.Error != nil {
-		_, err := fmt.Fprintf(writer, "%s: %s\n", result.Error.Code, result.Error.Message)
-		return err
+		if _, err := fmt.Fprintf(writer, "%s: %s\n", result.Error.Code, result.Error.Message); err != nil {
+			return err
+		}
 	}
 	if result.Message != "" {
 		_, err := fmt.Fprintln(writer, result.Message)
@@ -238,6 +239,29 @@ func writeTextResult(writer io.Writer, result CommandResult) error {
 	if len(result.Locales) > 0 {
 		_, err := fmt.Fprintln(writer, strings.Join(result.Locales, "\n"))
 		return err
+	}
+	for _, device := range result.Discovery {
+		if _, err := fmt.Fprintf(writer, "%s %s %s %s\n", device.MAC, device.IPv4, device.Model, device.Sender); err != nil {
+			return err
+		}
+	}
+	for _, device := range result.Devices {
+		if _, err := fmt.Fprintf(writer, "%s %s", device.MAC, device.Status); err != nil {
+			return err
+		}
+		if device.Sender != "" {
+			if _, err := fmt.Fprintf(writer, " %s", device.Sender); err != nil {
+				return err
+			}
+		}
+		if device.Error != "" {
+			if _, err := fmt.Fprintf(writer, ": %s", device.Error); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintln(writer); err != nil {
+			return err
+		}
 	}
 	return nil
 }
