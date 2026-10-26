@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/CDSRaBot/sadp-handler.GO/internal/adapter"
@@ -48,7 +49,7 @@ func DiscoverOnInterface(ctx context.Context, iface adapter.Interface, options D
 	return discoverWith(ctx, iface, options, handle, productionDeps(options))
 }
 
-func discoverWith(ctx context.Context, iface adapter.Interface, options DiscoveryOptions, handle EventHandler, deps discoveryDeps) error {
+func discoverWith(ctx context.Context, iface adapter.Interface, options DiscoveryOptions, handle EventHandler, deps discoveryDeps) (result error) {
 	if err := validateInputs(ctx, iface, options, handle, deps); err != nil {
 		return err
 	}
@@ -60,14 +61,25 @@ func discoverWith(ctx context.Context, iface adapter.Interface, options Discover
 	if err != nil {
 		return fmt.Errorf("open discovery multicast: %w", err)
 	}
+	var closeOnce sync.Once
+	var closeErr error
+	listenerStarted := false
 	closeConn := func() error {
-		if conn == nil {
-			return nil
-		}
-		err := conn.Close()
-		conn = nil
-		return err
+		closeOnce.Do(func() {
+			closeErr = conn.Close()
+		})
+		return closeErr
 	}
+	defer func() {
+		err := closeConn()
+		if err != nil && !listenerStarted {
+			if result == nil {
+				result = fmt.Errorf("close discovery multicast: %w", err)
+			} else {
+				result = errors.Join(result, fmt.Errorf("close discovery multicast: %w", err))
+			}
+		}
+	}()
 	if err := deps.send(conn); err != nil {
 		return errors.Join(fmt.Errorf("send initial inquiry probe: %w", err), closeConn())
 	}
@@ -81,11 +93,11 @@ func discoverWith(ctx context.Context, iface adapter.Interface, options Discover
 		return handle(eventCtx, event)
 	}
 	listenDone := make(chan error, 1)
+	listenerStarted = true
 	go func() {
 		listenDone <- deps.listen(listenCtx, conn, events, options.MaxSADPDatagramSize)
 	}()
 
-	var result error
 	var listenerErr error
 	var listenerObserved bool
 	if options.ProbeInterval > 0 {

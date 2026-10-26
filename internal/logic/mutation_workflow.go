@@ -156,6 +156,17 @@ func (w MutationWorkflow) runMany(ctx context.Context, targets []MutationTarget,
 	if len(targets) == 0 {
 		return nil, operationError(OperationInvalidInput, errors.New("mutation targets are empty"))
 	}
+	seen := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		if err := validateMutationContextTarget(ctx, target); err != nil {
+			return nil, err
+		}
+		key := target.MAC.String() + "|" + target.Sender.String()
+		if _, exists := seen[key]; exists {
+			return nil, operationError(OperationInvalidInput, errors.New("mutation targets contain duplicates"))
+		}
+		seen[key] = struct{}{}
+	}
 	outcomes := make([]MutationOutcome, 0, len(targets))
 	var aggregate error
 	for _, target := range targets {

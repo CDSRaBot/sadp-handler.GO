@@ -18,13 +18,16 @@ type PacketHandler func(context.Context, []byte, net.Addr) error
 type TransportStage string
 
 const (
-	TransportValidation TransportStage = "validation"
-	TransportEncode     TransportStage = "encode"
-	TransportWrite      TransportStage = "write"
-	TransportShortWrite TransportStage = "short_write"
-	TransportRead       TransportStage = "read"
-	TransportDispatch   TransportStage = "dispatch"
-	TransportClose      TransportStage = "close"
+	TransportValidation       TransportStage = "validation"
+	TransportEncode           TransportStage = "encode"
+	TransportWrite            TransportStage = "write"
+	TransportShortWrite       TransportStage = "short_write"
+	TransportRead             TransportStage = "read"
+	TransportDispatch         TransportStage = "dispatch"
+	TransportTimeout          TransportStage = "timeout"
+	TransportCanceled         TransportStage = "canceled"
+	TransportResponseTooLarge TransportStage = "response_too_large"
+	TransportClose            TransportStage = "close"
 )
 
 type TransportError struct {
@@ -115,6 +118,10 @@ func Listen(ctx context.Context, conn net.PacketConn, maxDatagramSize int, handl
 		if n < 0 || n > len(buffer) {
 			closeConnection()
 			return &TransportError{Stage: TransportRead, Err: errors.New("connection returned an invalid datagram length")}
+		}
+		if n > maxDatagramSize {
+			closeConnection()
+			return &TransportError{Stage: TransportResponseTooLarge, Err: errors.New("datagram exceeds configured size")}
 		}
 		if err := handleDatagram(ctx, buffer[:n], sender, maxDatagramSize, handle); err != nil {
 			closeConnection()

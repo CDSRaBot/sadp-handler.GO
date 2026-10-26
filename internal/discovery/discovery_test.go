@@ -264,6 +264,31 @@ func TestDiscoverWithPreservesCancellationAndCallbackErrorsWithoutPayloads(t *te
 	})
 }
 
+func TestDiscoverWithClosesOpenedConnectionAfterListenerStops(t *testing.T) {
+	connection := &closeTrackingPacketConn{}
+	options := validOptions()
+	options.ProbeInterval = 0
+	options.CycleTimeout = time.Millisecond
+	options.RepeatCount = 1
+	deps := fakeDeps()
+	deps.open = func(adapter.Interface, adapter.MulticastOptions) (net.PacketConn, error) {
+		return connection, nil
+	}
+	deps.listen = func(ctx context.Context, _ net.PacketConn, _ EventHandler, _ int) error {
+		<-ctx.Done()
+		return nil
+	}
+
+	if err := discoverWith(context.Background(), validInterface(), options, func(context.Context, Event) error {
+		return nil
+	}, deps); err != nil {
+		t.Fatalf("discoverWith returned error: %v", err)
+	}
+	if connection.closeCount != 1 {
+		t.Fatalf("close count = %d, want 1", connection.closeCount)
+	}
+}
+
 type fakePacketConn struct{}
 
 func (*fakePacketConn) ReadFrom([]byte) (int, net.Addr, error) {
@@ -277,3 +302,22 @@ func (*fakePacketConn) LocalAddr() net.Addr              { return &net.UDPAddr{}
 func (*fakePacketConn) SetDeadline(time.Time) error      { return nil }
 func (*fakePacketConn) SetReadDeadline(time.Time) error  { return nil }
 func (*fakePacketConn) SetWriteDeadline(time.Time) error { return nil }
+
+type closeTrackingPacketConn struct {
+	closeCount int
+}
+
+func (*closeTrackingPacketConn) ReadFrom([]byte) (int, net.Addr, error) {
+	return 0, nil, errors.New("read not configured")
+}
+func (*closeTrackingPacketConn) WriteTo(payload []byte, _ net.Addr) (int, error) {
+	return len(payload), nil
+}
+func (c *closeTrackingPacketConn) Close() error {
+	c.closeCount++
+	return nil
+}
+func (*closeTrackingPacketConn) LocalAddr() net.Addr              { return &net.UDPAddr{} }
+func (*closeTrackingPacketConn) SetDeadline(time.Time) error      { return nil }
+func (*closeTrackingPacketConn) SetReadDeadline(time.Time) error  { return nil }
+func (*closeTrackingPacketConn) SetWriteDeadline(time.Time) error { return nil }

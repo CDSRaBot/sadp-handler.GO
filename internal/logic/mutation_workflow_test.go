@@ -129,3 +129,26 @@ func TestMutationWorkflowPreservesPartialOutcomes(t *testing.T) {
 		t.Fatalf("unexpected partial outcomes: %#v", outcomes)
 	}
 }
+
+func TestMutationWorkflowRejectsDuplicateTargetsBeforeTransportUse(t *testing.T) {
+	target := mutationTarget()
+	called := false
+	workflow := logic.MutationWorkflow{
+		Transport: fakeTransport{exchange: func(context.Context, logic.MutationTarget, []byte) (logic.MutationExchange, error) {
+			called = true
+			return logic.MutationExchange{}, nil
+		}},
+		Parser: fakeResponseParser{parse: func(logic.MutationOperation, logic.MutationTarget, net.Addr, []byte) (logic.MutationDecision, error) {
+			return logic.MutationDecision{}, nil
+		}},
+	}
+
+	_, err := workflow.ActivateMany(context.Background(), []logic.MutationTarget{target, target}, validPassword(), "")
+	var operationErr *logic.DeviceOperationError
+	if !errors.As(err, &operationErr) || operationErr.Kind != logic.OperationInvalidInput {
+		t.Fatalf("ActivateMany() error = %v, want invalid-input error", err)
+	}
+	if called {
+		t.Fatal("duplicate target validation must happen before transport use")
+	}
+}

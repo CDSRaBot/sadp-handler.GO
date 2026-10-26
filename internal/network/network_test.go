@@ -223,6 +223,21 @@ func TestListenWrapsReadAndCloseErrors(t *testing.T) {
 	}
 }
 
+func TestListenRejectsDatagramsAboveConfiguredLimit(t *testing.T) {
+	connection := &recordingPacketConn{
+		readN:      DefaultMaxSADPDatagramSize + 1,
+		readSender: &net.UDPAddr{IP: net.ParseIP("192.0.2.10"), Port: 37020},
+	}
+	err := Listen(context.Background(), connection, DefaultMaxSADPDatagramSize, func(context.Context, []byte, net.Addr) error {
+		t.Fatal("oversized datagram must not reach the handler")
+		return nil
+	})
+	assertTransportStage(t, err, TransportResponseTooLarge)
+	if !connection.closed {
+		t.Fatal("Listen must close after an oversized datagram")
+	}
+}
+
 func TestListenClosesConnectionForInvalidArguments(t *testing.T) {
 	testCases := []struct {
 		name  string
@@ -276,6 +291,8 @@ type recordingPacketConn struct {
 	closeCount    int
 	closeErr      error
 	readErr       error
+	readN         int
+	readSender    net.Addr
 	readStarted   chan struct{}
 	readUnblock   chan struct{}
 	readStartOnce sync.Once
@@ -296,6 +313,9 @@ func (c *recordingPacketConn) ReadFrom([]byte) (int, net.Addr, error) {
 	}
 	if c.readErr != nil {
 		return 0, nil, c.readErr
+	}
+	if c.readN != 0 {
+		return c.readN, c.readSender, nil
 	}
 	return 0, nil, errors.New("read not configured")
 }
