@@ -322,3 +322,86 @@ func TestMutationWorkflowRedactsRawResponseFromParserErrors(t *testing.T) {
 		t.Fatalf("error = %v, want parser cause preserved", err)
 	}
 }
+
+func TestActivationWorkflowPreservesExplicitDeviceRejection(t *testing.T) {
+	target := mutationTarget()
+	workflow := logic.MutationWorkflow{
+		Transport: fakeTransport{exchange: func(context.Context, logic.MutationTarget, []byte) (logic.MutationExchange, error) {
+			return logic.MutationExchange{Sender: target.Sender, Data: []byte("synthetic-rejection")}, nil
+		}},
+		Parser: fakeResponseParser{parse: func(operation logic.MutationOperation, got logic.MutationTarget, sender net.Addr, data []byte) (logic.MutationDecision, error) {
+			return logic.MutationDecision{
+				Operation: operation,
+				Target:    got,
+				Status:    logic.MutationRejected,
+				Reason:    "device rejected request",
+			}, nil
+		}},
+	}
+
+	decision, err := workflow.Activate(context.Background(), target, validPassword(), "")
+	if err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+	if decision.Status != logic.MutationRejected {
+		t.Fatalf("decision status = %q, want rejected", decision.Status)
+	}
+	if decision.Reason != "device rejected request" {
+		t.Fatalf("decision reason = %q, want safe rejection summary", decision.Reason)
+	}
+}
+
+func TestMutationWorkflowRejectsEmptyExchangeBeforeParser(t *testing.T) {
+	target := mutationTarget()
+	parserCalled := false
+	workflow := logic.MutationWorkflow{
+		Transport: fakeTransport{exchange: func(context.Context, logic.MutationTarget, []byte) (logic.MutationExchange, error) {
+			return logic.MutationExchange{Sender: target.Sender}, nil
+		}},
+		Parser: fakeResponseParser{parse: func(logic.MutationOperation, logic.MutationTarget, net.Addr, []byte) (logic.MutationDecision, error) {
+			parserCalled = true
+			return logic.MutationDecision{}, nil
+		}},
+	}
+
+	_, err := workflow.Activate(context.Background(), target, validPassword(), "")
+	var operationErr *logic.DeviceOperationError
+	if !errors.As(err, &operationErr) || operationErr.Kind != logic.OperationMalformed {
+		t.Fatalf("error = %v, want malformed DeviceOperationError", err)
+	}
+	if parserCalled {
+		t.Fatal("empty exchange must not reach parser")
+	}
+}
+
+func TestConfigureNetworkPreservesChallengeCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	providerCalled := false
+	workflow := logic.MutationWorkflow{
+		ChallengeProvider: fakeChallengeProvider{acquire: func(ctx context.Context, target logic.MutationTarget) (logic.Challenge, error) {
+			providerCalled = true
+			return logic.Challenge{}, ctx.Err()
+		}},
+		Transport: fakeTransport{exchange: func(context.Context, logic.MutationTarget, []byte) (logic.MutationExchange, error) {
+			t.Fatal("canceled challenge must prevent mutation transport")
+			return logic.MutationExchange{}, nil
+		}},
+		Parser: fakeResponseParser{parse: func(logic.MutationOperation, logic.MutationTarget, net.Addr, []byte) (logic.MutationDecision, error) {
+			t.Fatal("canceled challenge must prevent response parsing")
+			return logic.MutationDecision{}, nil
+		}},
+	}
+
+	_, err := workflow.ConfigureNetwork(ctx, mutationTarget(), networkConfig(), validPassword())
+	var operationErr *logic.DeviceOperationError
+	if !errors.As(err, &operationErr) || operationErr.Kind != logic.OperationCanceled {
+		t.Fatalf("error = %v, want canceled DeviceOperationError", err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled cause", err)
+	}
+	if providerCalled {
+		t.Fatal("already-canceled context must be rejected before challenge acquisition")
+	}
+}
