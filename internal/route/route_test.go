@@ -181,35 +181,36 @@ func TestSelectorPreservesCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	func TestBuildISAPIActivationPasswordUsesSDKSecurityPipeline(t *testing.T) {
-		material := ActivationSecurityMaterial{
-			PublicKey: "synthetic-base64-ascii-hex-rsa-modulus",
-			Password:  "SyntheticPassword1!",
-		}
-		encoded, err := BuildISAPIActivationPassword(material, "synthetic-challenge-ciphertext")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if encoded == "" {
-			t.Fatal("expected Base64 ASCII-hex AES ciphertext")
-		}
-		if strings.Contains(encoded, material.Password) {
-			t.Fatalf("activation payload leaked plaintext password: %q", encoded)
-		}
-	}
-
-	func TestBuildISAPIActivationPasswordRejectsMalformedChallenge(t *testing.T) {
-		_, err := BuildISAPIActivationPassword(
-			ActivationSecurityMaterial{PublicKey: "synthetic", Password: "SyntheticPassword1!"},
-			"not-a-valid-rsa-challenge",
-		)
-		var routeErr *Error
-		if !errors.As(err, &routeErr) || routeErr.Kind != ErrorMalformed {
-			t.Fatalf("expected malformed challenge error, got %v", err)
-		}
-	}
 	_, err = selector.Execute(ctx, OperationDiscovery, testTarget())
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected cancellation cause, got %v", err)
+	}
+}
+
+func TestBuildISAPIActivationPasswordUsesSDKSecurityPipeline(t *testing.T) {
+	material := ActivationSecurityMaterial{
+		PublicKey: "synthetic-base64-ascii-hex-rsa-modulus",
+		Password:  "SyntheticPassword1!",
+	}
+	encoded, err := BuildISAPIActivationPassword(material, "synthetic-challenge-ciphertext")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if encoded == "" {
+		t.Fatal("expected Base64 ASCII-hex AES ciphertext")
+	}
+	if strings.Contains(encoded, material.Password) {
+		t.Fatalf("activation payload leaked plaintext password: %q", encoded)
+	}
+}
+
+func TestBuildISAPIActivationPasswordRejectsMalformedChallenge(t *testing.T) {
+	_, err := BuildISAPIActivationPassword(
+		ActivationSecurityMaterial{PublicKey: "synthetic", Password: "SyntheticPassword1!"},
+		"not-a-valid-rsa-challenge",
+	)
+	var routeErr *Error
+	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorMalformed {
+		t.Fatalf("expected malformed challenge error, got %v", err)
 	}
 }
