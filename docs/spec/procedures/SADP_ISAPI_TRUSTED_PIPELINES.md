@@ -368,23 +368,23 @@ if result.indicates_reboot_required:
 The caller MUST retain the target MAC/serial before the write, because a
 changed address cannot be used as proof that the same device reappeared.
 
-## 9. Pipeline F — ISAPI security challenge (anti-replay)
+## 9. Pipeline F — ISAPI security challenge exchange
 
-**Goal:** Obtain a device-issued, short-lived challenge that protects a
-critical operation against replay, and prepare the encryption parameters of
-that operation.
+**Goal:** Obtain and validate device-specific challenge material required by
+a security operation, without assuming its semantics or key-binding rules.
 
-The security challenge and its salt are an anti-replay and session-security
-input handled by the device firmware or the vendor SDK. The reviewed material
-does not define them as the AES key of sensitive XML nodes. The sensitive
-nodes are protected by AES-CBC with the request `iv` (Pipeline G). The
-provenance of the AES key is a device-specific input and MUST NOT be
-inferred from the challenge.
+The security challenge and its salt are inputs to some device-specific flows, but
+they are not automatically the AES key or AES-key derivation inputs for
+sensitive XML nodes. The captured recovery-question UI uses a separate key
+derivation from the account credentials and `/ISAPI/Security/capabilities`
+salt; its session-login challenge feeds a different login proof. Do not apply
+this pipeline to user-management encryption unless that operation explicitly
+requires `/ISAPI/Security/challenge`.
 
-This pipeline applies before encrypted activation and encrypted changes to
-users, passwords, or privileges. It is separate from the HTTP Digest
-challenge in Pipeline C: the two challenge values have different protocol
-roles and MUST NOT be substituted for one another.
+This pipeline describes operations that explicitly use the security
+challenge, including the captured activation flow. It is separate from the
+HTTP Digest challenge in Pipeline C: the two challenge values have different
+protocol roles and MUST NOT be substituted for one another.
 
 ### Stages
 
@@ -393,7 +393,7 @@ roles and MUST NOT be substituted for one another.
 | F1 | Confirm that the target operation requires and supports the security challenge procedure | Capability-confirmed operation and supported security parameters | Stop if the device does not advertise a compatible procedure |
 | F2 | Send the security-challenge request | Bounded device response | Classify authentication, transport, and device rejection separately |
 | F3 | Validate the challenge response | Fresh challenge plus any declared salt, algorithm, key size, and lifetime | Stop on missing, malformed, expired, or unsupported values |
-| F4 | Resolve the AES key source for the operation | Key of the length required by the `security` scheme, from the device-declared source, retained only for the operation | If the source is not declared, stop with a classified compatibility error; never derive a key from the challenge by guessing a SHA-256, MD5, or HMAC variant |
+| F4 | Resolve the key source required by this operation | Key material from the operation's documented or capability-confirmed source | If the source is not declared, stop with a classified compatibility error; never infer a KDF from a challenge by guessing a SHA-256, MD5, or HMAC variant |
 | F5 | Bind the critical request to the challenge result | Request sent before challenge expiry with its required security parameters | Do not retry an expired or rejected challenge; acquire a new one when the device procedure permits |
 
 ### Challenge request
@@ -403,7 +403,7 @@ procedure is advertised:
 
 ```text
 POST /ISAPI/Security/challenge
-Authorization: Digest ...
+# Include authentication only when the device procedure requires it.
 ```
 
 Illustrative response (placeholders; field set and values are device-specific):
@@ -419,11 +419,10 @@ Illustrative response (placeholders; field set and values are device-specific):
 Flow pseudocode:
 
 ```text
-c = parse_challenge(response)              # challenge, salt, validity flag
-require c.isSessionValid and not expired(c)
-key = resolve_aes_key(security)            # device-declared source; 16 bytes for 1, 32 for 2
-iv  = CSPRNG(16 bytes)                     # fresh per request, sent as query value
-send_critical_request(security, iv, encrypted_nodes, challenge_binding = c)
+c = parse_challenge(response)              # validate fields and lifetime if declared
+require valid(c)
+operation_key = resolve_operation_key(c)    # only if the operation defines one
+send_critical_request(operation_key, challenge_binding = c)
 ```
 
 `challenge_binding` is whatever the device or SDK procedure requires to tie
@@ -435,6 +434,75 @@ The response supplies a unique challenge and may supply a salt and lifetime.
 Challenge text, salt, lifetime-bound tokens, AES keys, and password-derived
 intermediate values are secret material. They MUST NOT be logged, persisted,
 returned in diagnostics, or reused after expiry.
+
+### HAR-observed activation exchange
+
+One captured web activation flow used a different challenge envelope from the
+illustrative `SecurityChallenge` XML above:
+
+```text
+POST /ISAPI/Security/challenge
+<PublicKey><key>{Base64; decodes to 256 ASCII hexadecimal characters}</key></PublicKey>
+
+Response:
+<Challenge version="{device-version}">
+  <key>{Base64; decodes to 256 ASCII hexadecimal characters}</key>
+</Challenge>
+
+PUT /ISAPI/System/activate
+<ActivateInfo><password>{Base64; decodes to 64 ASCII hexadecimal characters}</password></ActivateInfo>
+```
+
+The new non-activated HAR contains the login UI and startup checks, but no
+activation challenge or activation `PUT`. Its cached crypto-related script
+bodies are byte-identical to those in the activated loading capture. The
+activation exchange itself is present in the earlier activation HAR, and the
+cached scripts explain its representation:
+
+- `login.js` calls `utils.getRSABits()`. The helper selects 256 bits only for
+  Internet Explorer versions below 9 and 1024 bits otherwise; the captured
+  Edge 155 user agent selects 1024 bits.
+- `cryptico.publicKeyString` returns the RSA modulus as hexadecimal text;
+  Base64 decoding the captured `PublicKey/key` yields 256 ASCII hex characters,
+  i.e. a 1024-bit modulus, not 256 raw key bytes or a 2048-bit modulus. The
+  decoded `Challenge/key` is also 256 ASCII hex characters, as expected for a
+  1024-bit RSA ciphertext in this helper.
+- The response is RSA-decrypted locally. For the 1024-bit branch, the
+  plaintext is used as a 32-hex-character AES key. The separate `aes_encrypt`
+  helper encrypts two 16-character blocks (the first 16 plaintext characters
+  and the activation password), concatenates their two 32-character hex
+  outputs, and Base64-encodes that 64-character ASCII hex string for
+  `ActivateInfo/password`.
+
+This is separate from Pipeline G's AES-CBC/PKCS#7 flow. The block helper
+truncates input longer than 16 characters and zero-pads shorter input.
+`cryptico.generateRSAKey` seeds `Math.seedrandom` from
+`sha256.hex(new Date()+"")`, making this legacy UI key generation
+deterministic and time-derived, not cryptographically secure. Document this
+only for compatibility analysis; do not reproduce it in a new client.
+
+The exchange does not by itself authenticate the camera or provide
+end-to-end request integrity. The captured page and API use HTTP, the client
+public key has no evidenced authentication, and the activation ciphertext
+contains no evidenced MAC. Do not treat this legacy field encryption as
+protection against an active intermediary; see the
+[transport and key-source assessment](../reports/ISAPI_ENCRYPTED_USER_FIELDS.md).
+
+Before activation, read-only checks against the currently connected camera
+`/SDK/activateStatus` = `Activated=false` and
+`/ISAPI/Security/extern/capabilities` =
+`isSupportWithSecurityQuestion=true`. The unauthenticated session-login
+capabilities request returned `iterations=100` and `isIrreversible=true`;
+challenge, salt, and session identifiers were not retained. An unauthenticated
+request to `/ISAPI/Security/capabilities?username=admin` returned `403`; this
+does not determine its authenticated behavior.
+
+The requested activation was then performed through the camera-served UI with
+the supplied credentials. The UI accepted the password and advanced to the
+recovery-question configuration dialog. A subsequent read-only
+`/SDK/activateStatus` returned `Activated=true`; no recovery questions were
+submitted. This validates the observed activation path on this
+camera/build, not universal support across firmware versions.
 
 ### Device Network SDK stream-encryption key
 
@@ -466,13 +534,15 @@ nodes, such as a password, in plaintext.
   the operation updates an existing user;
 - sensitive field values from a secret-safe source;
 - encryption scheme selected by the device: `security=1` or `security=2`;
-- a fresh initialization vector and a secret key supplied by the applicable
-  device security procedure.
+- a fresh initialization vector and, for the captured recovery-question
+  `security=1` flow, the username, current password, and security-capabilities
+  salt and iteration count needed by the browser-observed KDF.
 
-The client MUST establish the authenticated transport through Pipeline C and,
-when required, obtain key material through Pipeline F before this pipeline.
-It MUST NOT assume that every device supports encrypted user management,
-AES-256, or the same XML user schema.
+The client MUST establish the authenticated transport through Pipeline C and
+MUST use the key derivation documented for the specific operation. For the
+captured recovery-question UI, the KDF is defined below and does not use the
+session-login challenge. It MUST NOT assume that every device supports
+encrypted user management, AES-256, or the same XML user schema.
 
 ### Stages
 
@@ -480,7 +550,7 @@ AES-256, or the same XML user schema.
 |---|---|---|---|
 | G1 | Discover capability and select the user operation | Supported endpoint, XML schema, sensitive nodes, and security scheme | Stop if the device does not advertise a compatible encrypted-user procedure |
 | G2 | Validate operation inputs | Valid user identifier, non-secret XML fields, scheme, key length, and IV length | Stop before any request when values are invalid or incomplete |
-| G3 | Generate and encode request IV | Fresh 16-byte IV and its Base64 query value | Stop on entropy or encoding failure; never reuse an IV with the same key |
+| G3 | Derive the operation key and generate/encode request IV | Operation-specific key and fresh 16-byte IV in a device-supported query representation | Stop on missing KDF inputs, entropy, or encoding failure; never reuse an IV with the same key |
 | G4 | Transform every sensitive node | Device-required textual ciphertext for each sensitive value | Stop without sending if encoding or encryption fails |
 | G5 | Construct bounded XML and query | Schema-valid request with `security` and URL-encoded `iv` | Do not concatenate an unescaped query string or log the body |
 | G6 | Send one authenticated mutation | HTTP and ISAPI response | Classify rejection, authentication failure, incompatible capability, and transport failure separately |
@@ -503,32 +573,101 @@ selected encrypted-user capability requires them:
 |---|---|---|
 | `security` | `1` | AES-128-CBC; the secret key is exactly 16 bytes |
 | `security` | `2` | AES-256-CBC; the secret key is exactly 32 bytes |
-| `iv` | Base64 of the 16-byte IV | Initialization vector for the request |
+| `iv` | Device-supported encoding of a 16-byte IV (Base64 or hex where observed) | Initialization vector for the request |
 
 The URI builder MUST encode query values. In particular, standard Base64
 characters such as `+`, `/`, and `=` in `iv` MUST NOT be concatenated into a
-raw URI.
+raw URI. The captured question-configuration request uses a 32-character
+hexadecimal IV and does not include a `key` query parameter. Do not assume
+that every device uses the same IV or ciphertext text encoding.
+
+### Captured recovery-question key derivation
+
+The cached web UI uses `keyIterateNum`, the `isIrreversible` flag, and `salt`
+from `/ISAPI/Security/capabilities`; the account password and username are
+inputs. For `security=1`, its exact key derivation is:
+
+```text
+base = password
+if isIrreversible:
+    base = SHA256(username || security_capabilities.salt || password)
+
+h = SHA256(base || "AaBbCcDd1234!@#$")
+repeat keyIterateNum - 1 times:
+    h = SHA256(h)
+
+aes_key = first 32 hex characters of h  # 16 bytes, security=1
+```
+
+The recovered key is derived locally; the observed
+`questionConfiguration?security=1&iv=...` request transmits only the
+`security` and `iv` query parameters. This is observed web UI behavior for the
+captured device/build, not a universal ISAPI rule. The key derivation uses the
+security-capabilities salt, not the separate session-login challenge or salt.
+See the [encrypted-field report](../reports/ISAPI_ENCRYPTED_USER_FIELDS.md)
+for the capture evidence and the separate session-login proof.
 
 ### Sensitive-node transformation
 
-For each sensitive XML node, including `<password>`, the required plaintext
-input to AES is the Base64 text of the UTF-8 field value, not the original
-field value directly:
+For the captured question-configuration endpoint, the UI XML-escapes `&`,
+`<`, and `>` in each marked sensitive value, UTF-8/Base64-encodes the result,
+and uses the resulting Base64 text as AES input:
 
 ```text
-utf8_bytes       = UTF8(sensitive_value)
+escaped_value    = XML_escape(sensitive_value)
+utf8_bytes       = UTF8(escaped_value)
 base64_plaintext = Base64(utf8_bytes)
 padded_plaintext = PKCS7Pad(base64_plaintext, 16)
-ciphertext       = AES_CBC_Encrypt(selected_key, request_iv, padded_plaintext)
-xml_node_value   = Base64(ciphertext)
+ciphertext       = AES_CBC_Encrypt(aes_key, request_iv, padded_plaintext)
+xml_node_value   = Hex(ciphertext)
 ```
 
 AES-CBC uses PKCS#7 padding with a 16-byte block. The resulting ciphertext
-bytes are Base64-encoded and the Base64 text is placed in the sensitive XML
-node. Raw ciphertext bytes MUST NOT be inserted into XML. The same request IV
-may be used for the sensitive nodes of one request only when the device's
-encrypted-user procedure explicitly defines that behavior; otherwise
-construct the request as required by its advertised schema.
+is hex text in the observed endpoint; raw ciphertext bytes MUST NOT be
+inserted into XML. Other device/endpoint schemas may require Base64 or another
+representation. The same request IV is used for the marked fields in the
+captured request; do not generalize that behavior without device support.
+
+The captured UI generates the IV as `MD5(decimal_current_time_in_milliseconds)`.
+This timestamp-derived value is predictable, so it is documented only as an
+observed compatibility detail. New clients SHOULD use a cryptographically
+random 16-byte IV whenever the device accepts one.
+
+### HAR-observed recovery-question configuration
+
+In the captured browser flow, recovery questions were configured after a
+separate session-login exchange:
+
+| Order | Method and path | Observed role |
+|---|---|---|
+| 1 | `GET /ISAPI/Security/sessionLogin/capabilities?username=...` | Returned a session ID, 16-byte hex challenge, 32-byte hex salt, and `iterations=100` |
+| 2 | `POST /ISAPI/Security/sessionLogin?timeStamp=...` | Submitted a 64-character hex `password` field and session ID; response indicated success and returned a session ID |
+| 3 | `GET /ISAPI/Security/capabilities?username=...` | Advertised security-question support and `keyIterateNum=100` |
+| 4 | `PUT /ISAPI/Security/questionConfiguration?security=1&iv={32-hex-characters}` | Submitted three question IDs, three 32-character hex `answer` fields, and a 32-character hex `password` field |
+
+The cached `utils.js` session-login helper defines a separate proof:
+
+```text
+if isIrreversible:
+    proof = SHA256(username || session_login_salt || password)
+    proof = SHA256(proof || session_login_challenge)
+    repeat iterations - 2 times: proof = SHA256(proof)
+else:
+    proof = SHA256(password) || session_login_challenge
+    repeat iterations - 1 times: proof = SHA256(proof)
+```
+
+The 64-character login field is the hex proof. The session-login challenge and
+salt are separate from the security-capabilities salt used in the AES KDF.
+The capture and cached UI code together establish the observed recovery-
+question key derivation and wire encoding; they do not establish universal
+support on other devices or firmware.
+
+The captured response was an ISAPI success response. This confirms the shape
+of that exchange only; it does not prove that the same endpoint or encoding is
+supported on other devices/firmware. Never retain the captured credentials,
+answers, challenge, salt, session IDs, IV, or encrypted values in reports or
+fixtures.
 
 This sequence is pseudocode, not a universal XML payload:
 
