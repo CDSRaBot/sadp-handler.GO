@@ -211,6 +211,8 @@ The Python implementation's successful real-device discovery is verified behavio
 - Verify per-interface UDP multicast behavior and cancellation/cleanup on each supported OS. In particular, do not reproduce the Python Windows branch without evidence that it receives the intended SADP replies.
 - Finalize package paths before implementation. The module path is set in `go.mod`; API signatures in module documents are design contracts, not implemented symbols.
 
+Encrypted ISAPI user-field handling is specified in the [protocol report](./reports/ISAPI_ENCRYPTED_USER_FIELDS.md) and detailed SADP/ISAPI pipelines. This documents the protocol contract; it does not claim that the workflow is implemented.
+
 The Go implementation has not started, so Go parity with the verified Python discovery baseline remains to be implemented and tested. The unresolved items above do not invalidate the confirmed Python discovery behavior; they limit claims about unverified protocol details, other devices/platforms, and activation or network configuration.
 
 ---
