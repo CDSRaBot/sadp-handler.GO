@@ -211,6 +211,12 @@ func validateChallenge(target MutationTarget, challenge Challenge) error {
 func normalizeMutationError(err error, fallback DeviceOperationErrorKind) error {
 	var operationErr *DeviceOperationError
 	if errors.As(err, &operationErr) {
+		if operationErr.Kind == OperationMalformed || operationErr.Kind == OperationCorrelation {
+			return operationError(operationErr.Kind, redactedCause{
+				err:     err,
+				message: "response validation failed",
+			})
+		}
 		return operationErr
 	}
 	if errors.Is(err, context.Canceled) {
@@ -218,6 +224,12 @@ func normalizeMutationError(err error, fallback DeviceOperationErrorKind) error 
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return operationError(OperationTimeout, err)
+	}
+	if fallback == OperationMalformed || fallback == OperationCorrelation {
+		return operationError(fallback, redactedCause{
+			err:     err,
+			message: "response validation failed",
+		})
 	}
 	return operationError(fallback, err)
 }

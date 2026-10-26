@@ -152,3 +152,173 @@ func TestMutationWorkflowRejectsDuplicateTargetsBeforeTransportUse(t *testing.T)
 		t.Fatal("duplicate target validation must happen before transport use")
 	}
 }
+
+func TestConfigureNetworkRejectsUnusableChallengesBeforeBuildingPayload(t *testing.T) {
+	target := mutationTarget()
+	tests := []struct {
+		name      string
+		challenge logic.Challenge
+		want      error
+	}{
+		{
+			name:      "missing value",
+			challenge: logic.Challenge{TargetMAC: target.MAC, Sender: target.Sender, ExpiresAt: time.Now().Add(time.Minute)},
+			want:      logic.ErrEmptyChallenge,
+		},
+		{
+			name: "expired",
+			challenge: logic.Challenge{
+				Value: "synthetic-challenge", TargetMAC: target.MAC, Sender: target.Sender,
+				ExpiresAt: time.Now().Add(-time.Second),
+			},
+		},
+		{
+			name: "target mismatch",
+			challenge: logic.Challenge{
+				Value: "synthetic-challenge", TargetMAC: net.HardwareAddr{1, 2, 3, 4, 5, 6}, Sender: target.Sender,
+				ExpiresAt: time.Now().Add(time.Minute),
+			},
+		},
+		{
+			name: "sender mismatch",
+			challenge: logic.Challenge{
+				Value: "synthetic-challenge", TargetMAC: target.MAC,
+				Sender:    &net.UDPAddr{IP: net.ParseIP("192.0.2.99"), Port: 37020},
+				ExpiresAt: time.Now().Add(time.Minute),
+			},
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			transportCalled := false
+			workflow := logic.MutationWorkflow{
+				ChallengeProvider: fakeChallengeProvider{acquire: func(context.Context, logic.MutationTarget) (logic.Challenge, error) {
+					return testCase.challenge, nil
+				}},
+				Transport: fakeTransport{exchange: func(context.Context, logic.MutationTarget, []byte) (logic.MutationExchange, error) {
+					transportCalled = true
+					return logic.MutationExchange{}, nil
+				}},
+				Parser: fakeResponseParser{parse: func(logic.MutationOperation, logic.MutationTarget, net.Addr, []byte) (logic.MutationDecision, error) {
+					return logic.MutationDecision{}, nil
+				}},
+			}
+
+			_, err := workflow.ConfigureNetwork(context.Background(), target, networkConfig(), validPassword())
+			if err == nil {
+				t.Fatal("ConfigureNetwork() returned nil for unusable challenge")
+			}
+			if testCase.want != nil && !errors.Is(err, testCase.want) {
+				t.Fatalf("error = %v, want %v", err, testCase.want)
+			}
+			if transportCalled {
+				t.Fatal("unusable challenge must stop before mutation transport")
+			}
+		})
+	}
+}
+
+func TestMutationWorkflowRejectsInvalidResponseDecisions(t *testing.T) {
+	target := mutationTarget()
+	tests := []struct {
+		name     string
+		decision logic.MutationDecision
+	}{
+		{
+			name:     "unexpected operation",
+			decision: logic.MutationDecision{Operation: logic.MutationNetwork, Target: target, Status: logic.MutationAccepted},
+		},
+		{
+			name:     "unknown status",
+			decision: logic.MutationDecision{Operation: logic.MutationActivation, Target: target, Status: "unknown"},
+		},
+		{
+			name: "target mismatch",
+			decision: logic.MutationDecision{
+				Operation: logic.MutationActivation,
+				Target:    logic.MutationTarget{MAC: net.HardwareAddr{1, 2, 3, 4, 5, 6}, Sender: target.Sender},
+				Status:    logic.MutationAccepted,
+			},
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			workflow := logic.MutationWorkflow{
+				Transport: fakeTransport{exchange: func(context.Context, logic.MutationTarget, []byte) (logic.MutationExchange, error) {
+					return logic.MutationExchange{Sender: target.Sender, Data: []byte("synthetic-response")}, nil
+				}},
+				Parser: fakeResponseParser{parse: func(logic.MutationOperation, logic.MutationTarget, net.Addr, []byte) (logic.MutationDecision, error) {
+					return testCase.decision, nil
+				}},
+			}
+
+			_, err := workflow.Activate(context.Background(), target, validPassword(), "")
+			var operationErr *logic.DeviceOperationError
+			if !errors.As(err, &operationErr) || operationErr.Kind != logic.OperationMalformed && operationErr.Kind != logic.OperationCorrelation {
+				t.Fatalf("error = %v, want malformed or correlation DeviceOperationError", err)
+			}
+		})
+	}
+}
+
+func TestMutationWorkflowRejectsOversizedResponseBeforeParser(t *testing.T) {
+	target := mutationTarget()
+	parserCalled := false
+	workflow := logic.MutationWorkflow{
+		MaxResponseSize: 8,
+		Transport: fakeTransport{exchange: func(context.Context, logic.MutationTarget, []byte) (logic.MutationExchange, error) {
+			return logic.MutationExchange{Sender: target.Sender, Data: []byte("too-large")}, nil
+		}},
+		Parser: fakeResponseParser{parse: func(logic.MutationOperation, logic.MutationTarget, net.Addr, []byte) (logic.MutationDecision, error) {
+			parserCalled = true
+			return logic.MutationDecision{}, nil
+		}},
+	}
+
+	_, err := workflow.Activate(context.Background(), target, validPassword(), "")
+	var operationErr *logic.DeviceOperationError
+	if !errors.As(err, &operationErr) || operationErr.Kind != logic.OperationMalformed {
+		t.Fatalf("error = %v, want malformed DeviceOperationError", err)
+	}
+	if parserCalled {
+		t.Fatal("oversized response must not reach parser")
+	}
+}
+
+func TestMutationWorkflowPreservesCancellationCause(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := (logic.MutationWorkflow{}).Activate(ctx, mutationTarget(), validPassword(), "")
+	var operationErr *logic.DeviceOperationError
+	if !errors.As(err, &operationErr) || operationErr.Kind != logic.OperationCanceled {
+		t.Fatalf("error = %v, want canceled DeviceOperationError", err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled cause", err)
+	}
+}
+
+func TestMutationWorkflowRedactsRawResponseFromParserErrors(t *testing.T) {
+	target := mutationTarget()
+	const payloadCanary = "<ActivateResponse><Password>synthetic-secret</Password></ActivateResponse>"
+	parserErr := errors.New(payloadCanary)
+	workflow := logic.MutationWorkflow{
+		Transport: fakeTransport{exchange: func(context.Context, logic.MutationTarget, []byte) (logic.MutationExchange, error) {
+			return logic.MutationExchange{Sender: target.Sender, Data: []byte(payloadCanary)}, nil
+		}},
+		Parser: fakeResponseParser{parse: func(logic.MutationOperation, logic.MutationTarget, net.Addr, []byte) (logic.MutationDecision, error) {
+			return logic.MutationDecision{}, parserErr
+		}},
+	}
+
+	_, err := workflow.Activate(context.Background(), target, validPassword(), "")
+	if err == nil || strings.Contains(err.Error(), payloadCanary) {
+		t.Fatalf("parser error leaked raw response: %v", err)
+	}
+	if !errors.Is(err, parserErr) {
+		t.Fatalf("error = %v, want parser cause preserved", err)
+	}
+}

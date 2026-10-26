@@ -22,6 +22,19 @@ type DeviceOperationError struct {
 	Err  error
 }
 
+type redactedCause struct {
+	err     error
+	message string
+}
+
+func (e redactedCause) Error() string {
+	return e.message
+}
+
+func (e redactedCause) Unwrap() error {
+	return e.err
+}
+
 // Error formats the device operation error message.
 func (e *DeviceOperationError) Error() string {
 	if e.Err != nil {
