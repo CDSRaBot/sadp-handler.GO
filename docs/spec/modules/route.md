@@ -73,5 +73,7 @@ and cancellation stop retries and close owned resources. Response sizes,
 request counts, retries, and concurrency are bounded.
 
 Results and diagnostics must not contain passwords, challenges, nonces,
-hashes, keys, authorization headers, XML, or complete packet payloads.
-Observed device-specific ISAPI cryptography is not a universal contract.
+hashes, keys, authorization headers, XML, or complete packet payloads. ISAPI
+activation implements the universal Hikvision SDK RSA-1024/65537 challenge and
+AES-128-ECB procedure defined by P9.1; other undocumented cryptographic
+variants are not permitted.

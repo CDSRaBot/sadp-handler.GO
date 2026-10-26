@@ -192,11 +192,10 @@ activation flow. A firmware-specific challenge endpoint, when advertised by
 the device, is an input to that alternate flow and not a substitute for
 target identity verification.
 
-### Verified direct challenge/RSA/AES variant
+### Required direct challenge/RSA/AES variant
 
-The following variant was accepted by the currently tested camera through
-direct ISAPI, without a web UI. It is a compatibility profile, not a
-universal ISAPI contract:
+The following Hikvision SDK variant is the required universal direct-ISAPI
+activation contract:
 
 ```text
 RSA key = 1024-bit, public exponent 65537

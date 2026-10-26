@@ -22,8 +22,9 @@ M3 supplies operation semantics to M9. SADP remains the default activation and
 network-configuration route; ISAPI is selected explicitly or after an eligible
 SADP-unavailable result. Rejection, authentication failure, malformed
 responses, cancellation, and verification failure are terminal. Every bulk
-target retains its own protocol and typed outcome. ISAPI activation variants
-and cryptographic fields are capability-gated and device-specific.
+target retains its own protocol and typed outcome. ISAPI activation implements
+the universal SDK RSA/AES/challenge procedure; only additional undocumented
+variants are excluded.
 
 ## 3. Go API Contract
 

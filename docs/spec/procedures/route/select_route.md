@@ -29,3 +29,8 @@ operation fails.
 
 The result and error text are redacted; raw protocol payloads and credentials
 are never returned or logged.
+
+For `OperationActivation`, an ISAPI attempt implements the required SDK
+RSA-1024/65537 challenge and AES-128-ECB procedure. It is not selected by a
+cryptographic capability gate; malformed challenge/security data is a terminal
+error.
