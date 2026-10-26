@@ -13,6 +13,9 @@ Provide the user-facing command-line entry point and connect validated user requ
   directly in presentation code. Apply CLI overrides after file settings and
   pass the resolved `network.max_sadp_datagram_size` through discovery to M1
   and M2.
+- Expose `--protocol=sadp-first|isapi-only` as an explicit override. The
+  default is SADP-first; the CLI does not switch protocol after a device
+  rejection or authentication failure.
 - Resolve the initial language from built-in English, then settings, then command-line override; allow a built-in runtime command to switch locale for the current process.
 - Keep the active locale catalog complete by falling back to embedded English for missing translation keys.
 - Invoke application workflows with a cancellable `context.Context`.
@@ -58,6 +61,9 @@ decode `settings.json`. `DiscoveryService`, `LocalizationService`, and
 - P4.3 and P4.4 adapt their distinct input syntaxes to the shared typed command catalog in [P4.5 DispatchCommand](../procedures/ui/dispatch_command.md). The common dispatcher owns operation routing and result construction; parsers do not execute commands or perform I/O.
 - In the CLI REPL, a command error is reported and the REPL continues. EOF exits cleanly after canceling owned work; Ctrl+C cancels the active command and returns to the prompt. `quit` cancels owned work and exits cleanly. In one-shot mode, the process exits after its sole command. Use stable exit codes: `0` success (including `quit`), `1` operational/command failure, `2` invalid invocation, and `130` interrupted one-shot execution.
 - In TUI mode, enumerate eligible interfaces through M0 and let the user explicitly select one for discovery through M6. Report an actionable error when no eligible interface is available; do not silently choose an interface or fan out across all interfaces.
+- For an ISAPI operation, require an explicit or previously discovered device
+  address and report route/capability failures. The CLI never changes host
+  addresses or routing tables.
 - The default TUI requires both terminal input and output. If either is redirected or is not a usable terminal, return an actionable error recommending `--ui=no` for REPL use or `--ui=no --once COMMAND` for non-interactive use; never silently switch modes based on terminal detection. The REPL requires terminal input but may redirect output; one-shot CLI permits redirected streams.
 - After terminal validation, TUI mode enters the device-management screen. Discovery starts immediately for the selected interface through M6; receive listening remains active and one new inquiry probe is sent every 60 seconds until canceled. The TUI owns at most one such session: reselecting its interface does not start a duplicate, and changing interfaces cancels and joins the prior session before starting another. This cadence is application behavior, not an assertion about SADP requirements. Do not assume unverified response or UUID-correlation behavior.
 - Select the mode once per process invocation. Do not switch between TUI and standard CLI modes in the same process: exit the current invocation and start another with the desired `--ui` value. Commands entered in the TUI command area invoke application workflows and return results to the TUI; they do not switch the process to standard CLI mode. Runtime `language` selection changes locale only, not interaction mode.

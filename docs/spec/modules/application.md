@@ -15,6 +15,7 @@ type RuntimeConfig struct {
     Localization LocalizationRuntimeConfig
     Network      adapter.MulticastOptions
     Discovery    discovery.DiscoveryOptions
+    Protocol     route.Strategy
     LogLevel     slog.Level
 }
 
@@ -43,9 +44,9 @@ or read `settings.json`.
 
 `Compose` resolves the validated relative `localization.directory` against
 `baseDir`, constructs an `fs.FS` for M5, converts duration strings to
-`time.Duration`, builds `adapter.MulticastOptions`, and maps `logging.level`
-to `slog.Level`. It rejects a path that escapes `baseDir` and returns a
-typed configuration error.
+`time.Duration`, builds `adapter.MulticastOptions`, maps
+`protocol.strategy` to M9, and maps `logging.level` to `slog.Level`. It
+rejects a path that escapes `baseDir` and returns a typed configuration error.
 
 ## 3. Precedence and Lifecycle
 
@@ -74,3 +75,5 @@ M8 supplies the same typed `adapter.MulticastOptions` on Windows, Linux
 behavior remains behind M0 seams. Unit tests use injected platform openers;
 the acceptance gate additionally requires multicast setup and discovery
 verification on each supported OS where a test device/network is available.
+M8 injects M9's strategy and protocol dependencies without decoding settings in
+M4 or mutating host routes.

@@ -99,6 +99,10 @@ func SendSADPDatagram(
 - Return a typed `TransportError` with a stable stage (`validation`, `encode`, `write`, `short_write`, `read`, `dispatch`, `timeout`, `canceled`, `response_too_large`, or `close`) and preserve the underlying cause. Context cancellation remains detectable with `errors.Is(err, context.Canceled)`; do not classify errors by message text.
 - Mutation response acquisition is transport-only. XML parsing, challenge extraction, target correlation, and accepted/rejected decisions belong to the M3 workflow procedures and must not be added to M1.
 
+M1 reports SADP-unavailable stages distinctly from device rejection and
+malformed-response stages so M9 can make a safe fallback decision. It does not
+perform ISAPI requests or decide whether a route exists.
+
 ---
 
 *Level 1 module specification. See [P1.1 Listen](../procedures/network/listen.md), [P1.2 SendInquiryProbe](../procedures/network/send_probe.md), [P1.4 SendSADPDatagram](../procedures/network/send_datagram.md), [P1.5 handleDatagram](../procedures/network/datagram_received.md), and [P1.6 MutationTransport.Exchange](../procedures/network/exchange_mutation.md) for atomic procedure contracts. End-to-end orchestration is specified by [M6](./discovery.md).*

@@ -215,6 +215,22 @@ Encrypted ISAPI user-field handling is specified in the [protocol report](./repo
 
 The Go implementation has not started, so Go parity with the verified Python discovery baseline remains to be implemented and tested. The unresolved items above do not invalidate the confirmed Python discovery behavior; they limit claims about unverified protocol details, other devices/platforms, and activation or network configuration.
 
+### M9: Protocol Route
+
+M9 selects SADP or ISAPI per target and operation. `sadp_first` is the
+default; `isapi_only` is explicit. Fallback is allowed only after a
+classified SADP-unavailable result, an existing route to the target, and
+capability confirmation for the requested ISAPI operation. Device rejection,
+authentication failure, malformed or mismatched responses, cancellation,
+deadlines, and verification failures are terminal and never trigger fallback.
+
+M9 depends on M0/M1 for SADP interface and transport behavior, M3 for
+operation semantics, M7/M8 for configuration and dependency injection, and M4
+for user-facing selection. It never changes host routing or interface state.
+The [M9 module specification](./modules/route.md) and
+[route procedures](./procedures/route/select_route.md) define the typed
+outcomes, cleanup, limits, and redaction rules.
+
 ---
 
 *Root system specification for the Go implementation of SADP-handler.*

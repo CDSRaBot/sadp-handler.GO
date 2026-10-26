@@ -77,6 +77,10 @@ func OpenMulticast(iface Interface, options MulticastOptions) (net.PacketConn, e
 - Support Windows, Linux (including Termux where Go and the required network permissions are available), and macOS where the necessary multicast socket behavior is supported.
 - Report permission, bind, and unsupported-platform failures as errors with operation context. Do not silently fall back to a different interface.
 
+M0 provides only the selected local interface and SADP socket capabilities.
+ISAPI route reachability is checked by M9 through an injected route provider;
+M0 must not change interface addresses, routing tables, or firewall state.
+
 ## 5. Error and Resource Policy
 
 - Validate the interface and multicast group before opening a socket.

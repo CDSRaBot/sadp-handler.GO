@@ -8,7 +8,12 @@ Load the external `settings.json`, validate every setting, apply documented defa
 
 ## 2. File Format
 
-The file is valid JSON and contains `_comments` plus the setting groups `ui`, `localization`, `network`, `discovery`, and `logging`. JSON has no native comments, so `_comments` is mandatory documentation metadata: it contains one entry for every setting key and describes all accepted values and boundary conditions. Unknown keys, including unknown comment keys, are errors. `_comments` is ignored after structural validation.
+The file is valid JSON and contains `_comments` plus the setting groups `ui`,
+`localization`, `network`, `discovery`, `protocol`, and `logging`. JSON has no
+native comments, so `_comments` is mandatory documentation metadata: it
+contains one entry for every setting key and describes all accepted values and
+boundary conditions. Unknown keys, including unknown comment keys, are
+errors. `_comments` is ignored after structural validation.
 
 The template is [settings.json](../../../settings.json). Relative paths are resolved from the process working directory and must remain relative; secrets are not accepted in settings.
 
@@ -20,7 +25,12 @@ type Settings struct {
     Localization  LocalizationSettings
     Network       NetworkSettings
     Discovery     DiscoverySettings
+    Protocol      ProtocolSettings
     Logging       LoggingSettings
+}
+
+type ProtocolSettings struct {
+    Strategy string
 }
 
 type ConfigurationErrorKind string
@@ -65,6 +75,7 @@ Defaults and constraints:
 | `discovery.probe_interval` | empty | JSON string: empty for bounded, or positive Go duration for continuous |
 | `discovery.cycle_timeout` | `5s` | JSON string: empty for continuous, or positive Go duration for bounded |
 | `discovery.repeat_count` | `1` | `0` for continuous, or integer `1..100` for bounded |
+| `protocol.strategy` | `sadp_first` | `sadp_first` or `isapi_only` |
 | `logging.level` | `info` | `debug`, `info`, `warn`, `error` |
 
 The discovery settings are resolved into exactly one M6 policy: continuous mode uses `probe_interval > 0`, `cycle_timeout == 0`, `repeat_count == 0`; bounded mode uses `probe_interval == 0`, `cycle_timeout > 0`, and `repeat_count in 1..100`. The template's `repeat_count=1` is the default bounded policy; the TUI may explicitly select the continuous policy.
@@ -75,6 +86,10 @@ duration string resolves to zero. Numeric JSON values are invalid.
 ## 4. Precedence and Security
 
 Startup precedence is defaults, then `settings.json`, then command-line flags, then command-specific arguments. M5 resolves locale precedence as built-in English, settings language, and CLI `--lang`. CLI values are validated after parsing and before workflows start.
+
+`protocol.strategy` is passed to M9. The CLI override is `--protocol=sadp-first`
+or `--protocol=isapi-only`; it is never inferred from a failed operation and
+cannot modify host routing state.
 
 Do not log the file contents, passwords, tokens, challenge values, or protocol payloads. Preserve filesystem, JSON, and validation causes in `ConfigurationError`; callers branch on `Kind` with `errors.As` and inspect the cause with `errors.Is`. Do not accept environment variables or undocumented fallback files as another settings source.
 

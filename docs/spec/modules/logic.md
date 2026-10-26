@@ -18,6 +18,13 @@ M1 defines both inquiry-probe transmission and generic SADP datagram transmissio
 
 The selected activation variant is SADP XML with `TargetMAC` identifying the device; it is not ISAPI HTTP activation. P3.1 defines the request shape, with its Python-derived optional fields retained as compatibility requirements pending end-to-end activation outcome testing. Activation passwords are restricted to ASCII letters, ASCII digits, and printable ASCII special characters; spaces and all non-ASCII characters are rejected. For network configuration, the SHA-256 calculation over UTF-8 `password + challenge` is confirmed by practical experiments and is normative. Target MAC text is uppercase, colon-separated EUI-48.
 
+M3 supplies operation semantics to M9. SADP remains the default activation and
+network-configuration route; ISAPI is selected explicitly or after an eligible
+SADP-unavailable result. Rejection, authentication failure, malformed
+responses, cancellation, and verification failure are terminal. Every bulk
+target retains its own protocol and typed outcome. ISAPI activation variants
+and cryptographic fields are capability-gated and device-specific.
+
 ## 3. Go API Contract
 
 The following signatures describe the module contract; concrete package paths and exported names are finalized with the implementation:
