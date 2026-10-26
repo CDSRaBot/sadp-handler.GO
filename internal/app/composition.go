@@ -14,6 +14,7 @@ import (
 	"github.com/CDSRaBot/sadp-handler.GO/internal/adapter"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/config"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/discovery"
+	"github.com/CDSRaBot/sadp-handler.GO/internal/route"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/ui"
 )
 
@@ -22,6 +23,7 @@ type RuntimeConfig struct {
 	Localization LocalizationRuntimeConfig
 	Network      adapter.MulticastOptions
 	Discovery    discovery.DiscoveryOptions
+	Protocol     route.Strategy
 	LogLevel     slog.Level
 }
 
@@ -30,7 +32,8 @@ type LocalizationRuntimeConfig struct {
 }
 
 type ServiceSet struct {
-	UI ui.Dependencies
+	UI    ui.Dependencies
+	Route *route.Selector
 }
 
 type ApplicationDependencies struct {
@@ -96,6 +99,7 @@ func Compose(settings config.Settings, baseDir string) (RuntimeConfig, error) {
 			RepeatCount:         settings.Discovery.RepeatCount,
 			MaxSADPDatagramSize: settings.Network.MaxSADPDatagramSize,
 		},
+		Protocol: route.Strategy(settings.Protocol.Strategy),
 		LogLevel: level,
 	}, nil
 }

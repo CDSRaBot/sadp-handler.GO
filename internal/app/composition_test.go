@@ -29,6 +29,9 @@ func TestComposeBuildsTypedRuntimeConfig(t *testing.T) {
 	if runtime.Discovery.MaxSADPDatagramSize != settings.Network.MaxSADPDatagramSize {
 		t.Fatalf("datagram size was not preserved")
 	}
+	if runtime.Protocol != "sadp_first" {
+		t.Fatalf("protocol strategy = %q, want sadp_first", runtime.Protocol)
+	}
 	if _, err := fs.ReadFile(runtime.Localization.FS, "locales/ru.json"); err != nil {
 		t.Fatalf("configured localization directory was not mapped: %v", err)
 	}

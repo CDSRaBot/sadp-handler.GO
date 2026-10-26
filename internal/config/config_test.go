@@ -224,6 +224,7 @@ func withDocumentChange(change func(map[string]any)) string {
 			"discovery.probe_interval":       "probe interval",
 			"discovery.cycle_timeout":        "cycle timeout",
 			"discovery.repeat_count":         "repeat count",
+			"protocol.strategy":              "strategy",
 			"logging.level":                  "level",
 		},
 		"ui": map[string]any{
@@ -237,7 +238,8 @@ func withDocumentChange(change func(map[string]any)) string {
 		"discovery": map[string]any{
 			"probe_interval": "", "cycle_timeout": "5s", "repeat_count": 1,
 		},
-		"logging": map[string]any{"level": "info"},
+		"protocol": map[string]any{"strategy": "sadp_first"},
+		"logging":  map[string]any{"level": "info"},
 	}
 	if change != nil {
 		change(document)

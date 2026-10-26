@@ -12,6 +12,7 @@
     "discovery.probe_interval": "Интервал повторной отправки в непрерывном режиме: положительная duration-строка Go (например \"60s\"); пустое значение означает 0 и требуется для bounded-режима.",
     "discovery.cycle_timeout": "Окно приёма одного цикла в bounded-режиме: пустое/нулевое значение для continuous или положительная duration-строка Go (например \"5s\") для bounded.",
     "discovery.repeat_count": "Количество bounded-циклов: 0 для continuous или целое число от 1 до 100 для bounded; 0 не может сочетаться с cycle_timeout.",
+    "protocol.strategy": "Стратегия протокола: sadp_first по умолчанию или isapi_only для явного выбора ISAPI.",
     "logging.level": "Минимальный уровень журналирования: \"debug\", \"info\", \"warn\" или \"error\"; значение по умолчанию info. Секреты и payload не журналируются."
   },
   "ui": {
@@ -33,6 +34,9 @@
     "probe_interval": "",
     "cycle_timeout": "5s",
     "repeat_count": 1
+  },
+  "protocol": {
+    "strategy": "sadp_first"
   },
   "logging": {
     "level": "info"

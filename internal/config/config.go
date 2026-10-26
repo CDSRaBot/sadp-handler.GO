@@ -16,18 +16,19 @@ import (
 )
 
 const (
-	defaultSettingsPath    = "settings.json"
-	defaultMaxDatagramSize = 1500
-	defaultMulticastGroup  = "239.255.255.250"
-	defaultMulticastPort   = 37020
-	defaultMulticastTTL    = 64
-	defaultLocalizationDir = "locales"
-	defaultCycleTimeout    = 5 * time.Second
-	defaultRepeatCount     = 1
-	defaultLanguage        = "en"
-	defaultLoggingLevel    = "info"
-	defaultUIMode          = "yes"
-	defaultUIFormat        = "text"
+	defaultSettingsPath     = "settings.json"
+	defaultMaxDatagramSize  = 1500
+	defaultMulticastGroup   = "239.255.255.250"
+	defaultMulticastPort    = 37020
+	defaultMulticastTTL     = 64
+	defaultLocalizationDir  = "locales"
+	defaultCycleTimeout     = 5 * time.Second
+	defaultRepeatCount      = 1
+	defaultLanguage         = "en"
+	defaultLoggingLevel     = "info"
+	defaultProtocolStrategy = "sadp_first"
+	defaultUIMode           = "yes"
+	defaultUIFormat         = "text"
 )
 
 type UISettings struct {
@@ -58,11 +59,16 @@ type LoggingSettings struct {
 	Level string
 }
 
+type ProtocolSettings struct {
+	Strategy string
+}
+
 type Settings struct {
 	UI           UISettings
 	Localization LocalizationSettings
 	Network      NetworkSettings
 	Discovery    DiscoverySettings
+	Protocol     ProtocolSettings
 	Logging      LoggingSettings
 }
 
@@ -122,7 +128,8 @@ func Defaults() Settings {
 			CycleTimeout: defaultCycleTimeout.String(),
 			RepeatCount:  defaultRepeatCount,
 		},
-		Logging: LoggingSettings{Level: defaultLoggingLevel},
+		Logging:  LoggingSettings{Level: defaultLoggingLevel},
+		Protocol: ProtocolSettings{Strategy: defaultProtocolStrategy},
 	}
 }
 
@@ -132,6 +139,7 @@ type rawSettings struct {
 	Localization rawLocalization   `json:"localization"`
 	Network      rawNetwork        `json:"network"`
 	Discovery    rawDiscovery      `json:"discovery"`
+	Protocol     rawProtocol       `json:"protocol"`
 	Logging      rawLogging        `json:"logging"`
 }
 
@@ -163,6 +171,10 @@ type rawLogging struct {
 	Level *string `json:"level"`
 }
 
+type rawProtocol struct {
+	Strategy *string `json:"strategy"`
+}
+
 var requiredComments = map[string]struct{}{
 	"ui.mode":                        {},
 	"ui.format":                      {},
@@ -177,6 +189,7 @@ var requiredComments = map[string]struct{}{
 	"discovery.cycle_timeout":        {},
 	"discovery.repeat_count":         {},
 	"logging.level":                  {},
+	"protocol.strategy":              {},
 }
 
 func Load(path string) (Settings, error) {
@@ -271,6 +284,9 @@ func Load(path string) (Settings, error) {
 	if raw.Logging.Level != nil {
 		settings.Logging.Level = *raw.Logging.Level
 	}
+	if raw.Protocol.Strategy != nil {
+		settings.Protocol.Strategy = *raw.Protocol.Strategy
+	}
 
 	if err := validate(settings); err != nil {
 		return Settings{}, err
@@ -345,6 +361,9 @@ func validate(settings Settings) error {
 		}
 	} else if cycleTimeout <= 0 || settings.Discovery.RepeatCount < 1 || settings.Discovery.RepeatCount > 100 {
 		return invalidCombination("discovery", "bounded mode requires positive cycle_timeout and repeat_count 1..100")
+	}
+	if settings.Protocol.Strategy != "sadp_first" && settings.Protocol.Strategy != "isapi_only" {
+		return invalidValue("protocol.strategy", "must be sadp_first or isapi_only")
 	}
 	switch settings.Logging.Level {
 	case "debug", "info", "warn", "error":
