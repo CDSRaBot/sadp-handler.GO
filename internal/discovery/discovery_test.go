@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -228,6 +229,70 @@ func TestDiscoverWithScheduledSendFailureCancelsSession(t *testing.T) {
 	}
 	if sendCount != 2 {
 		t.Fatalf("send count = %d, want 2", sendCount)
+	}
+}
+
+func TestDiscoverWithContinuousModeSerializesScheduledWrites(t *testing.T) {
+	options := validOptions()
+	options.ProbeInterval = time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var mu sync.Mutex
+	activeWrites := 0
+	maxActiveWrites := 0
+	sendCount := 0
+	deps := fakeDeps()
+	deps.send = func(net.PacketConn) error {
+		mu.Lock()
+		activeWrites++
+		if activeWrites > maxActiveWrites {
+			maxActiveWrites = activeWrites
+		}
+		sendCount++
+		mu.Unlock()
+		time.Sleep(2 * time.Millisecond)
+		mu.Lock()
+		activeWrites--
+		mu.Unlock()
+		return nil
+	}
+	deps.listen = func(ctx context.Context, _ net.PacketConn, _ EventHandler, _ int) error {
+		<-ctx.Done()
+		return nil
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- discoverWith(ctx, validInterface(), options, func(context.Context, Event) error {
+			return nil
+		}, deps)
+	}()
+	deadline := time.After(time.Second)
+	for {
+		mu.Lock()
+		got := sendCount
+		mu.Unlock()
+		if got >= 2 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("did not observe scheduled writes")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("discoverWith returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("discoverWith did not stop after cancellation")
+	}
+	if maxActiveWrites != 1 {
+		t.Fatalf("maximum concurrent writes = %d, want 1", maxActiveWrites)
 	}
 }
 

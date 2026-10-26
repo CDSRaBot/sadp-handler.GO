@@ -121,7 +121,7 @@ func discoverWith(ctx context.Context, iface adapter.Interface, options Discover
 func productionDeps(options DiscoveryOptions) discoveryDeps {
 	return discoveryDeps{
 		open: func(iface adapter.Interface, options adapter.MulticastOptions) (net.PacketConn, error) {
-			return adapter.OpenMulticast(iface, options.Group)
+			return adapter.OpenMulticast(iface, options)
 		},
 		send: func(conn net.PacketConn) error {
 			target := &net.UDPAddr{

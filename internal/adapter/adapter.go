@@ -106,23 +106,24 @@ func listInterfacesWith(
 	return result, nil
 }
 
-func OpenMulticast(iface Interface, group netip.AddrPort) (net.PacketConn, error) {
-	return openMulticastWith(iface, group, openMulticast)
+func OpenMulticast(iface Interface, options MulticastOptions) (net.PacketConn, error) {
+	return openMulticastWith(iface, options, openMulticast)
 }
 
 func openMulticastWith(
 	iface Interface,
-	group netip.AddrPort,
-	open func(Interface, netip.AddrPort) (net.PacketConn, error),
+	options MulticastOptions,
+	open func(Interface, MulticastOptions) (net.PacketConn, error),
 ) (net.PacketConn, error) {
 	if !eligibleInterface(iface) {
 		return nil, &AdapterError{Kind: AdapterInvalidInterface, Err: errors.New("interface is not eligible")}
 	}
-	if !group.IsValid() || !group.Addr().Is4() || !group.Addr().IsMulticast() || group.Port() == 0 {
+	if !options.Group.IsValid() || !options.Group.Addr().Is4() || !options.Group.Addr().IsMulticast() ||
+		options.Group.Port() == 0 || options.TTL < 1 || options.TTL > 255 {
 		return nil, &AdapterError{Kind: AdapterInvalidMulticast, Err: errors.New("group must be an IPv4 multicast address with a non-zero port")}
 	}
 
-	connection, err := open(iface, group)
+	connection, err := open(iface, options)
 	if err != nil {
 		kind := AdapterBindFailed
 		if errors.Is(err, os.ErrPermission) {
@@ -208,16 +209,16 @@ func eligibleInterface(iface Interface) bool {
 	return false
 }
 
-func openMulticast(iface Interface, group netip.AddrPort) (net.PacketConn, error) {
+func openMulticast(iface Interface, options MulticastOptions) (net.PacketConn, error) {
 	address := &net.UDPAddr{
-		IP:   net.IP(group.Addr().AsSlice()),
-		Port: int(group.Port()),
+		IP:   net.IP(options.Group.Addr().AsSlice()),
+		Port: int(options.Group.Port()),
 	}
 	connection, err := net.ListenMulticastUDP("udp4", &net.Interface{Index: iface.Index, Name: iface.Name}, address)
 	if err != nil {
 		return nil, err
 	}
-	if err := ipv4.NewPacketConn(connection).SetMulticastTTL(64); err != nil {
+	if err := ipv4.NewPacketConn(connection).SetMulticastTTL(options.TTL); err != nil {
 		_ = connection.Close()
 		return nil, fmt.Errorf("set multicast TTL: %w", err)
 	}

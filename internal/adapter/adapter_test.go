@@ -155,6 +155,7 @@ func TestOpenMulticastWithValidatesArgumentsAndPreservesConnection(t *testing.T)
 		Flags:        net.FlagUp,
 	}
 	validGroup := netip.MustParseAddrPort("239.255.255.250:37020")
+	validOptions := MulticastOptions{Group: validGroup, TTL: 64}
 
 	for _, group := range []netip.AddrPort{
 		netip.AddrPort{},
@@ -162,8 +163,20 @@ func TestOpenMulticastWithValidatesArgumentsAndPreservesConnection(t *testing.T)
 		netip.MustParseAddrPort("239.255.255.250:0"),
 	} {
 		t.Run("invalid group "+group.String(), func(t *testing.T) {
-			_, err := openMulticastWith(validInterface, group, func(Interface, netip.AddrPort) (net.PacketConn, error) {
+			_, err := openMulticastWith(validInterface, MulticastOptions{Group: group, TTL: 64}, func(Interface, MulticastOptions) (net.PacketConn, error) {
 				t.Fatal("open must not be called for invalid input")
+				return nil, nil
+			})
+			var adapterErr *AdapterError
+			if !errors.As(err, &adapterErr) || adapterErr.Kind != AdapterInvalidMulticast {
+				t.Fatalf("error = %T %v, want invalid-multicast AdapterError", err, err)
+			}
+		})
+	}
+	for _, ttl := range []int{0, 256} {
+		t.Run("invalid TTL", func(t *testing.T) {
+			_, err := openMulticastWith(validInterface, MulticastOptions{Group: validGroup, TTL: ttl}, func(Interface, MulticastOptions) (net.PacketConn, error) {
+				t.Fatal("open must not be called for invalid TTL")
 				return nil, nil
 			})
 			var adapterErr *AdapterError
@@ -175,8 +188,8 @@ func TestOpenMulticastWithValidatesArgumentsAndPreservesConnection(t *testing.T)
 
 	t.Run("successful configured connection", func(t *testing.T) {
 		connection := &fakePacketConn{}
-		got, err := openMulticastWith(validInterface, validGroup, func(iface Interface, group netip.AddrPort) (net.PacketConn, error) {
-			if iface.Name != validInterface.Name || group != validGroup {
+		got, err := openMulticastWith(validInterface, validOptions, func(iface Interface, options MulticastOptions) (net.PacketConn, error) {
+			if iface.Name != validInterface.Name || options != validOptions {
 				t.Fatal("interface or group was not preserved")
 			}
 			return connection, nil
@@ -191,7 +204,7 @@ func TestOpenMulticastWithValidatesArgumentsAndPreservesConnection(t *testing.T)
 
 	t.Run("open failure", func(t *testing.T) {
 		want := errors.New("join failed")
-		_, err := openMulticastWith(validInterface, validGroup, func(Interface, netip.AddrPort) (net.PacketConn, error) {
+		_, err := openMulticastWith(validInterface, validOptions, func(Interface, MulticastOptions) (net.PacketConn, error) {
 			return nil, want
 		})
 		if !errors.Is(err, want) {
