@@ -2,6 +2,10 @@ package route
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"net"
 	"net/netip"
@@ -176,7 +180,7 @@ func TestRouteErrorsRedactSecurityMaterial(t *testing.T) {
 func TestSelectorPreservesCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	selector, err := NewSelector(StrategySADPFirst, Dependencies{})
+	selector, err := NewSelector(StrategySADPFirst, Dependencies{SADP: &fakeTransport{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,11 +192,17 @@ func TestSelectorPreservesCancellation(t *testing.T) {
 }
 
 func TestBuildISAPIActivationPasswordUsesSDKSecurityPipeline(t *testing.T) {
-	material := ActivationSecurityMaterial{
-		PublicKey: "synthetic-base64-ascii-hex-rsa-modulus",
-		Password:  "SyntheticPassword1!",
+	material, err := NewActivationSecurityMaterial("SyntheticPassword1!")
+	if err != nil {
+		t.Fatal(err)
 	}
-	encoded, err := BuildISAPIActivationPassword(material, "synthetic-challenge-ciphertext")
+	challenge := "00112233445566778899aabbccddeeff"
+	rsaCiphertext, err := rsa.EncryptPKCS1v15(rand.Reader, &material.PrivateKey.PublicKey, []byte(challenge))
+	if err != nil {
+		t.Fatal(err)
+	}
+	challengeValue := base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(rsaCiphertext)))
+	encoded, err := BuildISAPIActivationPassword(material, challengeValue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,8 +215,12 @@ func TestBuildISAPIActivationPasswordUsesSDKSecurityPipeline(t *testing.T) {
 }
 
 func TestBuildISAPIActivationPasswordRejectsMalformedChallenge(t *testing.T) {
-	_, err := BuildISAPIActivationPassword(
-		ActivationSecurityMaterial{PublicKey: "synthetic", Password: "SyntheticPassword1!"},
+	material, err := NewActivationSecurityMaterial("SyntheticPassword1!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = BuildISAPIActivationPassword(
+		material,
 		"not-a-valid-rsa-challenge",
 	)
 	var routeErr *Error

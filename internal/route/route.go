@@ -3,9 +3,16 @@ package route
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
+	"strings"
 )
 
 var ErrNotImplemented = errors.New("not implemented")
@@ -52,8 +59,9 @@ func (e *Error) Unwrap() error { return e.Err }
 type FallbackDecision string
 
 const (
-	FallbackNotAllowed FallbackDecision = "not_allowed"
-	FallbackEligible   FallbackDecision = "eligible"
+	FallbackNotAllowed       FallbackDecision = "not_allowed"
+	FallbackEligible         FallbackDecision = "eligible"
+	FallbackRouteUnavailable FallbackDecision = "route_unavailable"
 )
 
 type Target struct {
@@ -89,21 +97,147 @@ type Dependencies struct {
 	Capability CapabilityProvider
 }
 
-type Selector struct{}
-
-func NewSelector(strategy Strategy, dependencies Dependencies) (*Selector, error) {
-	return &Selector{}, ErrNotImplemented
+type Selector struct {
+	strategy Strategy
+	deps     Dependencies
 }
 
-func (s *Selector) Execute(context.Context, Operation, Target) (Result, error) {
-	return Result{}, ErrNotImplemented
+func NewSelector(strategy Strategy, dependencies Dependencies) (*Selector, error) {
+	if strategy == "" {
+		strategy = StrategySADPFirst
+	}
+	if strategy != StrategySADPFirst && strategy != StrategyISAPIOnly {
+		return nil, &Error{Kind: ErrorInvalidInput, Err: fmt.Errorf("unknown strategy %q", strategy)}
+	}
+	if dependencies.ISAPI == nil && strategy == StrategyISAPIOnly {
+		return nil, &Error{Kind: ErrorInvalidInput, Err: errors.New("ISAPI transport is required")}
+	}
+	if dependencies.SADP == nil && strategy == StrategySADPFirst {
+		return nil, &Error{Kind: ErrorInvalidInput, Err: errors.New("SADP transport is required")}
+	}
+	return &Selector{strategy: strategy, deps: dependencies}, nil
+}
+
+func (s *Selector) Execute(ctx context.Context, operation Operation, target Target) (Result, error) {
+	if err := ctx.Err(); err != nil {
+		return Result{Operation: operation, Target: target}, &Error{Kind: ErrorCanceled, Err: err}
+	}
+	if operation == "" || !target.Address.IsValid() {
+		return Result{Operation: operation, Target: target}, &Error{Kind: ErrorInvalidInput, Err: errors.New("operation and target address are required")}
+	}
+	if s.strategy == StrategyISAPIOnly {
+		return s.executeISAPI(ctx, operation, target, FallbackNotAllowed)
+	}
+	sadpResult, err := s.deps.SADP.Execute(ctx, operation, target)
+	if err == nil {
+		if sadpResult.Protocol == "" {
+			sadpResult.Protocol = "sadp"
+		}
+		return sadpResult, nil
+	}
+	if !isSADPUnavailable(err) {
+		return Result{Operation: operation, Target: target, Protocol: "sadp", Fallback: FallbackNotAllowed, Err: err}, err
+	}
+	if s.deps.Routes == nil {
+		return Result{Operation: operation, Target: target, Protocol: "sadp", Fallback: FallbackRouteUnavailable, Err: err},
+			&Error{Kind: ErrorNoRoute, Err: err}
+	}
+	reachable, routeErr := s.deps.Routes.CanReach(ctx, target.Address, target.Interface)
+	if routeErr != nil {
+		return Result{Operation: operation, Target: target, Protocol: "sadp", Fallback: FallbackRouteUnavailable, Err: routeErr},
+			&Error{Kind: ErrorNoRoute, Err: routeErr}
+	}
+	if !reachable {
+		return Result{Operation: operation, Target: target, Protocol: "sadp", Fallback: FallbackRouteUnavailable, Err: err},
+			&Error{Kind: ErrorNoRoute, Err: err}
+	}
+	if s.deps.Capability == nil {
+		return Result{Operation: operation, Target: target, Protocol: "sadp", Fallback: FallbackNotAllowed, Err: err},
+			&Error{Kind: ErrorUnsupported, Err: errors.New("ISAPI capability provider is required")}
+	}
+	supported, capabilityErr := s.deps.Capability.Supports(ctx, target, operation)
+	if capabilityErr != nil {
+		return Result{Operation: operation, Target: target, Protocol: "sadp", Fallback: FallbackNotAllowed, Err: capabilityErr},
+			&Error{Kind: ErrorUnsupported, Err: capabilityErr}
+	}
+	if !supported {
+		return Result{Operation: operation, Target: target, Protocol: "sadp", Fallback: FallbackNotAllowed, Err: errors.New("ISAPI operation unsupported")},
+			&Error{Kind: ErrorUnsupported, Err: errors.New("ISAPI operation unsupported")}
+	}
+	return s.executeISAPI(ctx, operation, target, FallbackEligible)
+}
+
+func (s *Selector) executeISAPI(ctx context.Context, operation Operation, target Target, fallback FallbackDecision) (Result, error) {
+	result, err := s.deps.ISAPI.Execute(ctx, operation, target)
+	if err != nil {
+		return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: fallback, Err: err}, err
+	}
+	if result.Protocol == "" {
+		result.Protocol = "isapi"
+	}
+	result.Fallback = fallback
+	return result, nil
+}
+
+func isSADPUnavailable(err error) bool {
+	var routeErr *Error
+	return errors.As(err, &routeErr) && routeErr.Kind == ErrorSADPUnavailable
 }
 
 type ActivationSecurityMaterial struct {
-	PublicKey string
-	Password  string
+	PublicKey  string
+	PrivateKey *rsa.PrivateKey
+	Password   string
 }
 
-func BuildISAPIActivationPassword(ActivationSecurityMaterial, string) (string, error) {
-	return "", ErrNotImplemented
+func NewActivationSecurityMaterial(password string) (ActivationSecurityMaterial, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		return ActivationSecurityMaterial{}, fmt.Errorf("generate activation key: %w", err)
+	}
+	modulus := strings.ToUpper(hex.EncodeToString(key.PublicKey.N.Bytes()))
+	return ActivationSecurityMaterial{
+		PublicKey:  base64.StdEncoding.EncodeToString([]byte(modulus)),
+		PrivateKey: key,
+		Password:   password,
+	}, nil
+}
+
+func BuildISAPIActivationPassword(material ActivationSecurityMaterial, challengeValue string) (string, error) {
+	if material.PrivateKey == nil || material.Password == "" {
+		return "", &Error{Kind: ErrorInvalidInput, Err: errors.New("activation key and password are required")}
+	}
+	ciphertext, err := base64.StdEncoding.DecodeString(challengeValue)
+	if err != nil {
+		return "", &Error{Kind: ErrorMalformed, Err: fmt.Errorf("decode challenge: %w", err)}
+	}
+	encodedCiphertext, err := hex.DecodeString(string(ciphertext))
+	if err != nil {
+		return "", &Error{Kind: ErrorMalformed, Err: fmt.Errorf("decode challenge hex: %w", err)}
+	}
+	plain, err := rsa.DecryptPKCS1v15(rand.Reader, material.PrivateKey, encodedCiphertext)
+	if err != nil {
+		return "", &Error{Kind: ErrorMalformed, Err: fmt.Errorf("decrypt challenge: %w", err)}
+	}
+	challenge := string(plain)
+	if len(challenge) != 32 {
+		return "", &Error{Kind: ErrorMalformed, Err: errors.New("challenge must contain 32 hexadecimal characters")}
+	}
+	aesKey, err := hex.DecodeString(challenge)
+	if err != nil || len(aesKey) != 16 {
+		return "", &Error{Kind: ErrorMalformed, Err: errors.New("challenge is not a valid AES-128 key")}
+	}
+	block, err := aes.NewCipher(aesKey)
+	if err != nil {
+		return "", &Error{Kind: ErrorMalformed, Err: err}
+	}
+	out := make([]byte, 0, aes.BlockSize*2)
+	for _, value := range []string{challenge[:16], material.Password} {
+		input := make([]byte, aes.BlockSize)
+		copy(input, []byte(value))
+		encrypted := make([]byte, aes.BlockSize)
+		block.Encrypt(encrypted, input)
+		out = append(out, []byte(strings.ToUpper(hex.EncodeToString(encrypted)))...)
+	}
+	return base64.StdEncoding.EncodeToString(out), nil
 }
