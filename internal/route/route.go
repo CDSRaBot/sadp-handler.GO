@@ -98,3 +98,12 @@ func NewSelector(strategy Strategy, dependencies Dependencies) (*Selector, error
 func (s *Selector) Execute(context.Context, Operation, Target) (Result, error) {
 	return Result{}, ErrNotImplemented
 }
+
+type ActivationSecurityMaterial struct {
+	PublicKey string
+	Password  string
+}
+
+func BuildISAPIActivationPassword(ActivationSecurityMaterial, string) (string, error) {
+	return "", ErrNotImplemented
+}
