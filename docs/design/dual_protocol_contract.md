@@ -144,9 +144,9 @@ error, but it does not attempt SADP.
 
 - **Discovery:** SADP is the default inventory source. ISAPI discovery is not
   implied; it requires an explicit address or a previously known target.
-- **Activation:** SADP activation is preferred. ISAPI activation requires a
-  capability-gated documented variant; device-specific challenge, RSA, AES,
-  or encrypted fields are not generalized by this contract.
+- **Activation:** SADP activation is preferred. ISAPI activation uses the
+  universal Hikvision SDK RSA/AES/challenge procedure defined below; it does
+  not require a capability gate for that security procedure.
 - **Network configuration:** the same selection and fallback rules apply.
   Success requires a subsequent status verification.
 - **Status verification:** use the protocol that completed the operation
@@ -197,11 +197,34 @@ passed to the route provider; it never mutates host routing state.
 Invalid strategy values fail configuration validation. There is no hidden
 fallback switch and no automatic route manipulation.
 
-## 7. Capability and protocol evidence
+## 7. Universal ISAPI activation security procedure
+
+ISAPI activation implements the Hikvision SDK baseline in this exact order:
+
+1. generate an RSA-1024 key pair with public exponent 65537;
+2. send `POST /ISAPI/Security/challenge` with `PublicKey/key` equal to
+   Base64 of the ASCII-hex RSA modulus;
+3. Base64-decode `Challenge/key`, interpret its bytes as ASCII-hex, and
+   decrypt it with RSA PKCS#1 v1.5 using the generated private key;
+4. require the plaintext to be exactly 32 hexadecimal characters and decode
+   it as the 16-byte AES-128 key;
+5. AES-128-ECB encrypt two 16-byte zero-padded blocks: the first 16 ASCII
+   bytes of the challenge plaintext and the first 16 ASCII bytes of the
+   activation password;
+6. concatenate the uppercase ASCII-hex ciphertext blocks, Base64-encode that
+   text, and send it as `ActivateInfo/password` to `PUT /ISAPI/System/activate`;
+7. verify activation status and target identity.
+
+Malformed encoding, an invalid challenge length/character, RSA/AES failure,
+HTTP/device rejection, timeout, cancellation, or failed verification is a
+typed terminal error. Private keys, challenge plaintext, AES keys,
+ciphertext, and activation XML are never returned or logged.
+
+## 8. Capability and protocol evidence
 
 Capability detection may use trusted discovery metadata, an explicit device
-profile, or a bounded ISAPI capability probe. Model and firmware values are
-hints until the device confirms the requested operation. The contract does
-not promote undocumented HTTP fields or observed cryptographic sequences to
-universal behavior. Unsupported or device-specific activation variants return
-an explicit capability error.
+profile, or a bounded ISAPI capability probe for non-activation operations.
+Model and firmware values are hints until the device confirms the requested
+operation. The documented universal activation security procedure above is
+not optional; unsupported claims apply only to additional undocumented ISAPI
+variants.
