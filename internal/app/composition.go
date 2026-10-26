@@ -32,8 +32,10 @@ type LocalizationRuntimeConfig struct {
 }
 
 type ServiceSet struct {
-	UI    ui.Dependencies
-	Route *route.Selector
+	UI         ui.Dependencies
+	Route      *route.Selector
+	Activation ui.ActivationService
+	Network    ui.NetworkService
 }
 
 type ApplicationDependencies struct {
@@ -130,6 +132,12 @@ func (filesystem localizationFS) Open(name string) (fs.File, error) {
 
 func BuildDependencies(runtime RuntimeConfig, services ServiceSet) ApplicationDependencies {
 	services.UI.Config = runtime.UI
+	if services.Activation != nil {
+		services.UI.Activation = services.Activation
+	}
+	if services.Network != nil {
+		services.UI.Network = services.Network
+	}
 	services.UI.DiscoveryPolicy = ui.DiscoveryPolicy{
 		ProbeInterval:       runtime.Discovery.ProbeInterval,
 		CycleTimeout:        runtime.Discovery.CycleTimeout,

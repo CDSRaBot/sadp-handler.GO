@@ -1,12 +1,14 @@
 package app
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/CDSRaBot/sadp-handler.GO/internal/config"
+	"github.com/CDSRaBot/sadp-handler.GO/internal/ui"
 )
 
 func TestComposeBuildsTypedRuntimeConfig(t *testing.T) {
@@ -57,4 +59,35 @@ func TestBuildDependenciesMapsRuntimePolicy(t *testing.T) {
 	if dependencies.Services.UI.DiscoveryPolicy.CycleTimeout != runtime.Discovery.CycleTimeout {
 		t.Fatalf("discovery policy was not mapped")
 	}
+}
+
+func TestBuildDependenciesInjectsMutationServices(t *testing.T) {
+	runtime, err := Compose(config.Defaults(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	activation := testActivationService{}
+	network := testNetworkService{}
+	dependencies := BuildDependencies(runtime, ServiceSet{
+		Activation: activation,
+		Network:    network,
+	})
+	if dependencies.Services.UI.Activation != activation {
+		t.Fatal("activation service was not injected")
+	}
+	if dependencies.Services.UI.Network != network {
+		t.Fatal("network service was not injected")
+	}
+}
+
+type testActivationService struct{}
+
+func (testActivationService) Activate(context.Context, ui.ActivateCommand) ([]ui.DeviceOutcome, error) {
+	return nil, nil
+}
+
+type testNetworkService struct{}
+
+func (testNetworkService) ConfigureNetwork(context.Context, ui.NetworkCommand) ([]ui.DeviceOutcome, error) {
+	return nil, nil
 }
