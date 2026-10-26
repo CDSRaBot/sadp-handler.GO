@@ -234,6 +234,38 @@ recovery-question configuration dialog. A subsequent read-only
 were submitted. This validates the observed activation path on this
 camera/build, not universal support across firmware versions.
 
+### Direct ISAPI activation validation
+
+The same camera was subsequently activated without using the web UI. The
+following exchange was reproduced and executed directly against
+`192.168.1.64`:
+
+```text
+1. Generate a local RSA-1024 key pair with public exponent 65537.
+2. Base64-encode the 256-character hexadecimal RSA modulus.
+3. POST /ISAPI/Security/challenge
+   body: <PublicKey><key>{base64(modulus_hex)}</key></PublicKey>
+4. Base64-decode Challenge/key to ASCII hexadecimal RSA ciphertext.
+5. RSA PKCS#1 v1.5-decrypt locally; require a 32-character hexadecimal result.
+6. Interpret that result as the 16-byte AES-128 key.
+7. AES-128-ECB-encrypt two 16-byte ASCII blocks:
+   - the first 16 characters of the decrypted challenge plaintext;
+   - the activation password, truncated or zero-padded to 16 bytes.
+8. Concatenate the two hexadecimal ciphertext strings and Base64-encode the
+   resulting 64-character ASCII hexadecimal string.
+9. PUT /ISAPI/System/activate
+   body: <ActivateInfo><password>{base64(ciphertext_hex)}</password></ActivateInfo>
+10. GET /SDK/activateStatus and require Activated=true.
+```
+
+The device returned HTTP 200 with `statusCode=1` and `subStatusCode=ok` for
+the activation request. The verification request returned `Activated=true`.
+No browser page, UI event, recovery-question request, or secret value was
+used in this validation. This confirms that the observed challenge/RSA/AES
+format is accepted by this camera/build through direct ISAPI. It does not
+establish that every firmware accepts arbitrary RSA key generation or the
+same XML namespace, padding, block mode, or key size.
+
 This is a protocol-evidence assessment, not a claim that every firmware has
 the same properties. A stronger guarantee would require an authenticated
 transport (for example, correctly validated TLS) and an authenticated,

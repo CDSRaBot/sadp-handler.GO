@@ -191,6 +191,34 @@ Content-Type: application/xml
 объявляет, является входом альтернативной процедуры, а не заменой проверки
 идентичности цели.
 
+### Проверенный прямой вариант challenge/RSA/AES
+
+Следующий вариант был принят проверенной камерой через прямой ISAPI без
+web-интерфейса. Это профиль совместимости, а не универсальный контракт
+ISAPI:
+
+```text
+RSA-ключ = 1024 бит, открытая экспонента 65537
+PublicKey/key = Base64(ASCII_HEX(RSA-модуль))
+Challenge/key = Base64(ASCII_HEX(RSA_PKCS1_v1.5(ciphertext)))
+challenge_plaintext = RSA_private_decrypt(Challenge/key)
+AES-ключ = HEX_DECODE(challenge_plaintext)  # 32 hex-символа -> 16 байт
+
+block(value) = ASCII(value, обрезать до 16 байт, дополнить нулём до 16 байт)
+cipher_1 = AES-128-ECB-ENCRYPT(AES-ключ, block(challenge_plaintext[0:16]))
+cipher_2 = AES-128-ECB-ENCRYPT(AES-ключ, block(пароль_активации))
+
+ActivateInfo/password = Base64(ASCII(HEX(cipher_1) || HEX(cipher_2)))
+```
+
+Последовательность операций: `POST /ISAPI/Security/challenge`, затем
+`PUT /ISAPI/System/activate`, затем `GET /SDK/activateStatus`. На проверенной
+камере запрос активации вернул HTTP 200 с
+`statusCode=1`/`subStatusCode=ok`, а проверка вернула `Activated=true`.
+Реализация НЕ ДОЛЖНА журналировать пароль, RSA private key, challenge
+plaintext, AES-ключ, ciphertext или полный XML активации. Неподдержанные и
+противоречивые ответы остаются явными ошибками совместимости.
+
 ## 6. Pipeline C — авторизация ISAPI
 
 **Цель:** выполнить один авторизованный запрос к уже активированному

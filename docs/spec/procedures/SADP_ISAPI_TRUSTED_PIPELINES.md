@@ -192,6 +192,34 @@ activation flow. A firmware-specific challenge endpoint, when advertised by
 the device, is an input to that alternate flow and not a substitute for
 target identity verification.
 
+### Verified direct challenge/RSA/AES variant
+
+The following variant was accepted by the currently tested camera through
+direct ISAPI, without a web UI. It is a compatibility profile, not a
+universal ISAPI contract:
+
+```text
+RSA key = 1024-bit, public exponent 65537
+PublicKey/key = Base64(ASCII_HEX(RSA_modulus))
+Challenge/key = Base64(ASCII_HEX(RSA_PKCS1_v1.5(ciphertext)))
+challenge_plaintext = RSA_private_decrypt(Challenge/key)
+AES key = HEX_DECODE(challenge_plaintext)  # 32 hex characters -> 16 bytes
+
+block(value) = ASCII(value, truncated to 16 bytes, zero-padded to 16 bytes)
+cipher_1 = AES-128-ECB-ENCRYPT(AES key, block(challenge_plaintext[0:16]))
+cipher_2 = AES-128-ECB-ENCRYPT(AES key, block(activation_password))
+
+ActivateInfo/password = Base64(ASCII(HEX(cipher_1) || HEX(cipher_2)))
+```
+
+The operation sequence is `POST /ISAPI/Security/challenge`, followed by
+`PUT /ISAPI/System/activate`, followed by `GET /SDK/activateStatus`. On the
+tested camera the activation response was HTTP 200 with
+`statusCode=1`/`subStatusCode=ok`, and verification returned
+`Activated=true`. The implementation MUST not log the password, RSA private
+key, challenge plaintext, AES key, ciphertext, or complete activation XML.
+Unsupported or contradictory responses remain explicit compatibility failures.
+
 ## 6. Pipeline C — ISAPI authentication
 
 **Goal:** Execute one authenticated request against an already activated
