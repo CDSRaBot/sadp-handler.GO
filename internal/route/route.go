@@ -90,11 +90,24 @@ type CapabilityProvider interface {
 	Supports(context.Context, Target, Operation) (bool, error)
 }
 
+// TargetAddressProvider supplies an address when a target came from a registry
+// that only retained its hardware address. It must not alter host routing.
+type TargetAddressProvider interface {
+	Resolve(context.Context, Target) (netip.Addr, error)
+}
+
+type TargetAddressFunc func(context.Context, Target) (netip.Addr, error)
+
+func (f TargetAddressFunc) Resolve(ctx context.Context, target Target) (netip.Addr, error) {
+	return f(ctx, target)
+}
+
 type Dependencies struct {
 	SADP       Transport
 	ISAPI      Transport
 	Routes     RouteProvider
 	Capability CapabilityProvider
+	Addresses  TargetAddressProvider
 }
 
 type Selector struct {
@@ -124,6 +137,13 @@ func (s *Selector) Execute(ctx context.Context, operation Operation, target Targ
 	}
 	if err := ctx.Err(); err != nil {
 		return Result{Operation: operation, Target: target}, contextError(err)
+	}
+	if !target.Address.IsValid() && s.deps.Addresses != nil {
+		address, err := s.deps.Addresses.Resolve(ctx, target)
+		if err != nil {
+			return Result{Operation: operation, Target: target}, contextError(err)
+		}
+		target.Address = address
 	}
 	if !target.Address.IsValid() {
 		return Result{Operation: operation, Target: target}, &Error{Kind: ErrorInvalidInput, Err: errors.New("target address is required")}
@@ -200,6 +220,8 @@ func (s *Selector) executeISAPI(ctx context.Context, operation Operation, target
 	if err != nil {
 		return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: fallback, Err: err}, err
 	}
+	result.Target = target
+	result.Operation = operation
 	if result.Protocol == "" {
 		result.Protocol = "isapi"
 	}

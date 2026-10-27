@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestISAPIHTTPTransportRunsActivationAndVerification(t *testing.T) {
@@ -25,6 +26,7 @@ func TestISAPIHTTPTransportRunsActivationAndVerification(t *testing.T) {
 			if err := xml.NewDecoder(request.Body).Decode(&input); err != nil {
 				t.Fatal(err)
 			}
+
 			modulusBytes, err := base64.StdEncoding.DecodeString(input.PublicKey)
 			if err != nil {
 				t.Fatal(err)
@@ -66,5 +68,64 @@ func TestISAPIHTTPTransportRunsActivationAndVerification(t *testing.T) {
 	}
 	if activatedPayload.Password == "" || strings.Contains(activatedPayload.Password, transport.Password) {
 		t.Fatalf("activation payload was not encrypted safely: %q", activatedPayload.Password)
+	}
+}
+
+func TestISAPIRouteAndCapabilityAdaptersSupportHTTPAndHTTPS(t *testing.T) {
+	tests := []struct {
+		name   string
+		server *httptest.Server
+		client *http.Client
+	}{
+		{name: "http", server: httptest.NewServer(nil)},
+		{name: "https", server: httptest.NewTLSServer(nil)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.server.Config.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != "/ISAPI/System/capabilities" {
+					http.NotFound(writer, request)
+					return
+				}
+				_, _ = writer.Write([]byte(`<Capabilities><Activation>true</Activation><Network>false</Network><Status>true</Status></Capabilities>`))
+			})
+			defer test.server.Close()
+			if test.name == "https" {
+				test.client = test.server.Client()
+			}
+			transport := &ISAPIHTTPTransport{BaseURL: test.server.URL, Client: test.client}
+			reachable, err := (ISAPIRouteProvider{Transport: transport}).CanReach(context.Background(), testTarget().Address, "")
+			if err != nil || !reachable {
+				t.Fatalf("CanReach() = %v, %v", reachable, err)
+			}
+			profile, err := transport.LookupCapabilities(context.Background(), testTarget())
+			if err != nil || !profile.Operations[OperationActivation] || profile.Operations[OperationNetwork] {
+				t.Fatalf("LookupCapabilities() = %#v, %v", profile, err)
+			}
+			supported, err := (ISAPICapabilityProvider{Transport: transport}).Supports(context.Background(), testTarget(), OperationStatus)
+			if err != nil || !supported {
+				t.Fatalf("Supports(status) = %v, %v", supported, err)
+			}
+		})
+	}
+}
+
+func TestISAPICapabilityLookupHonorsCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		select {
+		case <-request.Context().Done():
+			return
+		case <-time.After(200 * time.Millisecond):
+			_, _ = writer.Write([]byte(`<Capabilities><Status>true</Status></Capabilities>`))
+		}
+	}))
+	defer server.Close()
+	transport := &ISAPIHTTPTransport{BaseURL: server.URL}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err := transport.LookupCapabilities(ctx, testTarget())
+	var routeErr *Error
+	if !errors.As(err, &routeErr) || (routeErr.Kind != ErrorCanceled && routeErr.Kind != ErrorTimeout) {
+		t.Fatalf("expected bounded cancellation, got %v", err)
 	}
 }

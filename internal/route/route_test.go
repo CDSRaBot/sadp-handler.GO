@@ -215,6 +215,7 @@ func TestISAPIOnlyChecksReachabilityBeforeCapabilityAndTransport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	_, err = selector.Execute(context.Background(), OperationStatus, testTarget())
 	var routeErr *Error
 	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorNoRoute {
@@ -222,6 +223,45 @@ func TestISAPIOnlyChecksReachabilityBeforeCapabilityAndTransport(t *testing.T) {
 	}
 	if routes.calls != 1 || capabilities.calls != 0 || isapi.calls != 0 {
 		t.Fatalf("unexpected provider calls: routes=%d capabilities=%d isapi=%d", routes.calls, capabilities.calls, isapi.calls)
+	}
+}
+
+func TestTargetAddressProviderResolvesBeforeGates(t *testing.T) {
+	isapi := &fakeTransport{result: Result{Protocol: "isapi"}}
+	selector, err := NewSelector(StrategyISAPIOnly, Dependencies{
+		ISAPI: isapi, Routes: &fakeRoutes{ok: true}, Capability: &fakeCapabilities{ok: true},
+		Addresses: TargetAddressFunc(func(_ context.Context, target Target) (netip.Addr, error) {
+			if len(target.MAC) != 6 {
+				t.Fatal("address provider received an incomplete target")
+			}
+			return netip.MustParseAddr("192.0.2.44"), nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := selector.Execute(context.Background(), OperationStatus, Target{MAC: testTarget().MAC})
+	if err != nil || result.Target.Address != netip.MustParseAddr("192.0.2.44") {
+		t.Fatalf("resolved target = %+v, err=%v", result.Target, err)
+	}
+}
+
+func TestTargetAddressProviderCancellationIsTerminal(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	selector, err := NewSelector(StrategySADPFirst, Dependencies{
+		SADP: &fakeTransport{},
+		Addresses: TargetAddressFunc(func(ctx context.Context, _ Target) (netip.Addr, error) {
+			return netip.Addr{}, ctx.Err()
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = selector.Execute(ctx, OperationStatus, Target{MAC: testTarget().MAC})
+	var routeErr *Error
+	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorCanceled {
+		t.Fatalf("expected canceled resolution, got %v", err)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -20,6 +21,110 @@ type ISAPIHTTPTransport struct {
 	BaseURL          string
 	MaxResponseBytes int64
 	Password         string
+}
+
+// ISAPIRouteProvider and ISAPICapabilityProvider are deliberately thin
+// adapters: HTTP ownership and response bounds stay in this transport.
+type ISAPIRouteProvider struct{ Transport *ISAPIHTTPTransport }
+
+func (p ISAPIRouteProvider) CanReach(ctx context.Context, address netip.Addr, _ string) (bool, error) {
+	if !address.IsValid() {
+		return false, &Error{Kind: ErrorInvalidInput, Err: errors.New("target address is required")}
+	}
+	if p.Transport == nil {
+		return false, &Error{Kind: ErrorInvalidInput, Err: errors.New("ISAPI transport is required")}
+	}
+	_, err := p.Transport.probe(ctx, Target{Address: address})
+	return err == nil, err
+}
+
+type CapabilityProfile struct {
+	Operations map[Operation]bool
+}
+
+type ISAPICapabilityProvider struct{ Transport *ISAPIHTTPTransport }
+
+func (p ISAPICapabilityProvider) Supports(ctx context.Context, target Target, operation Operation) (bool, error) {
+	if p.Transport == nil {
+		return false, &Error{Kind: ErrorInvalidInput, Err: errors.New("ISAPI transport is required")}
+	}
+	profile, err := p.Transport.LookupCapabilities(ctx, target)
+	if err != nil {
+		return false, err
+	}
+	return profile.Operations[operation], nil
+}
+
+func (t *ISAPIHTTPTransport) probe(ctx context.Context, target Target) ([]byte, error) {
+	base, err := t.baseURL()
+	if err != nil {
+		return nil, err
+	}
+	return t.request(ctx, http.MethodGet, base.ResolveReference(&url.URL{Path: "/ISAPI/System/capabilities"}), nil)
+}
+
+// LookupCapabilities performs one bounded capability/profile request. The
+// parser intentionally accepts only explicit boolean operation fields.
+func (t *ISAPIHTTPTransport) LookupCapabilities(ctx context.Context, target Target) (CapabilityProfile, error) {
+	payload, err := t.probe(ctx, target)
+	if err != nil {
+		return CapabilityProfile{}, err
+	}
+	profile := CapabilityProfile{Operations: make(map[Operation]bool)}
+	decoder := xml.NewDecoder(bytes.NewReader(payload))
+	for {
+		token, decodeErr := decoder.Token()
+		if decodeErr == io.EOF {
+			break
+		}
+		if decodeErr != nil {
+			return CapabilityProfile{}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI capability response is malformed")}
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		var operation Operation
+		switch strings.ToLower(start.Name.Local) {
+		case "activation":
+			operation = OperationActivation
+		case "network":
+			operation = OperationNetwork
+		case "status":
+			operation = OperationStatus
+		case "discovery":
+			operation = OperationDiscovery
+		default:
+			continue
+		}
+		var value string
+		if decodeErr := decoder.DecodeElement(&value, &start); decodeErr != nil {
+			return CapabilityProfile{}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI capability response is malformed")}
+		}
+		var supported bool
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "true", "1":
+			supported = true
+		case "false", "0":
+			supported = false
+		default:
+			return CapabilityProfile{}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI capability response is malformed")}
+		}
+		if previous, exists := profile.Operations[operation]; exists && previous != supported {
+			return CapabilityProfile{}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI capability response is contradictory")}
+		}
+		profile.Operations[operation] = supported
+	}
+	return profile, nil
+}
+
+func (t *ISAPIHTTPTransport) baseURL() (*url.URL, error) {
+	base, err := url.Parse(strings.TrimRight(t.BaseURL, "/"))
+	if err != nil || base.Scheme == "" || base.Host == "" ||
+		(base.Scheme != "http" && base.Scheme != "https") {
+		return nil, &Error{Kind: ErrorInvalidInput, Err: errors.New("valid ISAPI base URL is required")}
+	}
+	return base, nil
 }
 
 type securityChallengeRequest struct {
@@ -44,12 +149,9 @@ func (t *ISAPIHTTPTransport) Execute(ctx context.Context, operation Operation, t
 	if !target.Address.IsValid() {
 		return Result{Operation: operation, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorInvalidInput, Err: errors.New("target address is required")}
 	}
-	base, err := url.Parse(strings.TrimRight(t.BaseURL, "/"))
-	if err != nil || base.Scheme == "" || base.Host == "" {
-		return Result{Operation: operation, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorInvalidInput, Err: errors.New("valid ISAPI base URL is required")}
-	}
-	if base.Scheme != "http" && base.Scheme != "https" {
-		return Result{Operation: operation, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorInvalidInput, Err: errors.New("ISAPI URL must use HTTP or HTTPS")}
+	base, err := t.baseURL()
+	if err != nil {
+		return Result{Operation: operation, Target: target, Protocol: "isapi"}, err
 	}
 	if operation == OperationActivation {
 		return t.activate(ctx, base, target)
