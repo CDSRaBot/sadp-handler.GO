@@ -324,6 +324,7 @@ type recordingPacketConn struct {
 	closeErr      error
 	readErr       error
 	readN         int
+	readData      []byte
 	readSender    net.Addr
 	readStarted   chan struct{}
 	readUnblock   chan struct{}
@@ -338,7 +339,7 @@ func newBlockingPacketConn() *recordingPacketConn {
 	}
 }
 
-func (c *recordingPacketConn) ReadFrom([]byte) (int, net.Addr, error) {
+func (c *recordingPacketConn) ReadFrom(buffer []byte) (int, net.Addr, error) {
 	if c.readStarted != nil {
 		c.readStartOnce.Do(func() { close(c.readStarted) })
 		<-c.readUnblock
@@ -347,6 +348,7 @@ func (c *recordingPacketConn) ReadFrom([]byte) (int, net.Addr, error) {
 		return 0, nil, c.readErr
 	}
 	if c.readN != 0 {
+		copy(buffer, c.readData)
 		return c.readN, c.readSender, nil
 	}
 	return 0, nil, errors.New("read not configured")
