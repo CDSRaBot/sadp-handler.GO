@@ -121,8 +121,11 @@ func TestDiscoverWithBoundedModeSendsEachProbeAfterFullReceiveWindow(t *testing.
 		sendCount++
 		return nil
 	}
-	deps.listen = func(ctx context.Context, _ net.PacketConn, _ EventHandler, _ int) error {
+	deps.listen = func(ctx context.Context, conn net.PacketConn, _ EventHandler, _ int) error {
 		<-ctx.Done()
+		if err := conn.Close(); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -339,8 +342,11 @@ func TestDiscoverWithClosesOpenedConnectionAfterListenerStops(t *testing.T) {
 	deps.open = func(adapter.Interface, adapter.MulticastOptions) (net.PacketConn, error) {
 		return connection, nil
 	}
-	deps.listen = func(ctx context.Context, _ net.PacketConn, _ EventHandler, _ int) error {
+	deps.listen = func(ctx context.Context, conn net.PacketConn, _ EventHandler, _ int) error {
 		<-ctx.Done()
+		if err := conn.Close(); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -348,6 +354,59 @@ func TestDiscoverWithClosesOpenedConnectionAfterListenerStops(t *testing.T) {
 		return nil
 	}, deps); err != nil {
 		t.Fatalf("discoverWith returned error: %v", err)
+	}
+	if connection.closeCount != 1 {
+		t.Fatalf("close count = %d, want 1", connection.closeCount)
+	}
+}
+
+func TestDiscoverWithPreservesInitialSendAndCloseErrors(t *testing.T) {
+	sendErr := errors.New("initial send failed")
+	closeErr := errors.New("close failed")
+	connection := &closeTrackingPacketConn{closeErr: closeErr}
+	deps := fakeDeps()
+	deps.open = func(adapter.Interface, adapter.MulticastOptions) (net.PacketConn, error) {
+		return connection, nil
+	}
+	deps.send = func(net.PacketConn) error {
+		return sendErr
+	}
+
+	err := discoverWith(context.Background(), validInterface(), validOptions(), func(context.Context, Event) error {
+		return nil
+	}, deps)
+	if !errors.Is(err, sendErr) || !errors.Is(err, closeErr) {
+		t.Fatalf("error = %v, want send and close errors", err)
+	}
+	if connection.closeCount != 1 {
+		t.Fatalf("close count = %d, want 1", connection.closeCount)
+	}
+}
+
+func TestDiscoverWithPreservesListenerAndCloseErrors(t *testing.T) {
+	listenerErr := errors.New("listener failed")
+	closeErr := errors.New("close failed")
+	connection := &closeTrackingPacketConn{closeErr: closeErr}
+	options := validOptions()
+	options.ProbeInterval = 0
+	options.CycleTimeout = time.Millisecond
+	options.RepeatCount = 1
+	deps := fakeDeps()
+	deps.open = func(adapter.Interface, adapter.MulticastOptions) (net.PacketConn, error) {
+		return connection, nil
+	}
+	deps.listen = func(_ context.Context, conn net.PacketConn, _ EventHandler, _ int) error {
+		if err := conn.Close(); err != nil {
+			return errors.Join(listenerErr, err)
+		}
+		return listenerErr
+	}
+
+	err := discoverWith(context.Background(), validInterface(), options, func(context.Context, Event) error {
+		return nil
+	}, deps)
+	if !errors.Is(err, listenerErr) || !errors.Is(err, closeErr) {
+		t.Fatalf("error = %v, want listener and close errors", err)
 	}
 	if connection.closeCount != 1 {
 		t.Fatalf("close count = %d, want 1", connection.closeCount)
@@ -370,6 +429,7 @@ func (*fakePacketConn) SetWriteDeadline(time.Time) error { return nil }
 
 type closeTrackingPacketConn struct {
 	closeCount int
+	closeErr   error
 }
 
 func (*closeTrackingPacketConn) ReadFrom([]byte) (int, net.Addr, error) {
@@ -380,7 +440,7 @@ func (*closeTrackingPacketConn) WriteTo(payload []byte, _ net.Addr) (int, error)
 }
 func (c *closeTrackingPacketConn) Close() error {
 	c.closeCount++
-	return nil
+	return c.closeErr
 }
 func (*closeTrackingPacketConn) LocalAddr() net.Addr              { return &net.UDPAddr{} }
 func (*closeTrackingPacketConn) SetDeadline(time.Time) error      { return nil }

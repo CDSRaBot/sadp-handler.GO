@@ -202,6 +202,38 @@ func TestListenCancellationUnblocksBlockedReadAndClosesOnce(t *testing.T) {
 	}
 }
 
+func TestListenPreservesCloseErrorAfterCancellation(t *testing.T) {
+	closeErr := errors.New("close failed")
+	connection := newBlockingPacketConn()
+	connection.closeErr = closeErr
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- Listen(ctx, connection, DefaultMaxSADPDatagramSize, func(context.Context, []byte, net.Addr) error {
+			return nil
+		})
+	}()
+	select {
+	case <-connection.readStarted:
+	case <-time.After(time.Second):
+		t.Fatal("Listen did not enter ReadFrom")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, closeErr) {
+			t.Fatalf("error = %v, want close error %v", err, closeErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Listen did not stop after cancellation")
+	}
+	if connection.closeCount != 1 {
+		t.Fatalf("close count = %d, want 1", connection.closeCount)
+	}
+}
+
 func TestListenWrapsReadAndCloseErrors(t *testing.T) {
 	readErr := errors.New("read failed")
 	connection := &recordingPacketConn{readErr: readErr}

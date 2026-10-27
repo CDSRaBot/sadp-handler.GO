@@ -71,12 +71,13 @@ func discoverWith(ctx context.Context, iface adapter.Interface, options Discover
 		return closeErr
 	}
 	defer func() {
-		err := closeConn()
-		if err != nil && !listenerStarted {
-			if result == nil {
-				result = fmt.Errorf("close discovery multicast: %w", err)
-			} else {
-				result = errors.Join(result, fmt.Errorf("close discovery multicast: %w", err))
+		if !listenerStarted {
+			if err := closeConn(); err != nil {
+				if result == nil {
+					result = fmt.Errorf("close discovery multicast: %w", err)
+				} else {
+					result = errors.Join(result, fmt.Errorf("close discovery multicast: %w", err))
+				}
 			}
 		}
 	}()
