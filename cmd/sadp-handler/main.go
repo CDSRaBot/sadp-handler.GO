@@ -54,6 +54,11 @@ func run() int {
 			Version:          "dev",
 		},
 	})
+	defer func() {
+		if err := dependencies.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+	}()
 	return ui.RunCLIWithDefaults(
 		context.Background(),
 		os.Args[1:],

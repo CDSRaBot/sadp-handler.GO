@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/netip"
@@ -36,6 +37,7 @@ type ServiceSet struct {
 	Route      *route.Selector
 	Activation ui.ActivationService
 	Network    ui.NetworkService
+	Closers    []io.Closer
 }
 
 type ApplicationDependencies struct {
@@ -145,6 +147,19 @@ func BuildDependencies(runtime RuntimeConfig, services ServiceSet) ApplicationDe
 		MaxSADPDatagramSize: runtime.Discovery.MaxSADPDatagramSize,
 	}
 	return ApplicationDependencies{Config: runtime, Services: services}
+}
+
+// Close releases application-owned resources in reverse construction order.
+func (dependencies ApplicationDependencies) Close() error {
+	var closeErr error
+	for index := len(dependencies.Services.Closers) - 1; index >= 0; index-- {
+		closer := dependencies.Services.Closers[index]
+		if closer == nil {
+			continue
+		}
+		closeErr = errors.Join(closeErr, closer.Close())
+	}
+	return closeErr
 }
 
 func confinedPath(root, relative string) (string, error) {

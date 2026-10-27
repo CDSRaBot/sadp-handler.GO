@@ -2,9 +2,12 @@ package app
 
 import (
 	"context"
+	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/CDSRaBot/sadp-handler.GO/internal/config"
@@ -80,6 +83,47 @@ func TestBuildDependenciesInjectsMutationServices(t *testing.T) {
 	}
 }
 
+func TestApplicationDependenciesCloseReleasesResourcesInReverseOrder(t *testing.T) {
+	runtime, err := Compose(config.Defaults(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var closed []string
+	dependencies := BuildDependencies(runtime, ServiceSet{
+		Closers: []io.Closer{
+			recordingCloser{name: "first", closed: &closed},
+			recordingCloser{name: "second", closed: &closed},
+		},
+	})
+	if err := dependencies.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(closed, ","), "second,first"; got != want {
+		t.Fatalf("close order = %q, want %q", got, want)
+	}
+}
+
+func TestApplicationDependenciesCloseJoinsErrorsAndContinues(t *testing.T) {
+	runtime, err := Compose(config.Defaults(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := errors.New("close failed")
+	var closed []string
+	dependencies := BuildDependencies(runtime, ServiceSet{
+		Closers: []io.Closer{
+			recordingCloser{name: "first", closed: &closed, err: expected},
+			recordingCloser{name: "second", closed: &closed},
+		},
+	})
+	if err := dependencies.Close(); !errors.Is(err, expected) {
+		t.Fatalf("close error = %v, want %v", err, expected)
+	}
+	if got, want := strings.Join(closed, ","), "second,first"; got != want {
+		t.Fatalf("close order = %q, want %q", got, want)
+	}
+}
+
 type testActivationService struct{}
 
 func (testActivationService) Activate(context.Context, ui.ActivateCommand) ([]ui.DeviceOutcome, error) {
@@ -90,4 +134,15 @@ type testNetworkService struct{}
 
 func (testNetworkService) ConfigureNetwork(context.Context, ui.NetworkCommand) ([]ui.DeviceOutcome, error) {
 	return nil, nil
+}
+
+type recordingCloser struct {
+	name   string
+	closed *[]string
+	err    error
+}
+
+func (closer recordingCloser) Close() error {
+	*closer.closed = append(*closer.closed, closer.name)
+	return closer.err
 }

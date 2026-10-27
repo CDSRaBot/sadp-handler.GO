@@ -30,6 +30,8 @@ type ApplicationDependencies struct {
 
 type ServiceSet struct {
     // Package-owned injected interfaces are defined by the consuming module.
+    // Application-owned resources are released in reverse construction order.
+    Closers []io.Closer
 }
 
 func Compose(settings config.Settings, baseDir string) (RuntimeConfig, error)
@@ -77,3 +79,9 @@ the acceptance gate additionally requires multicast setup and discovery
 verification on each supported OS where a test device/network is available.
 M8 injects M9's strategy and protocol dependencies without decoding settings in
 M4 or mutating host routes.
+
+Mutation services remain injectable at this boundary. When activation or
+network services are supplied, M4 dispatches commands through those services.
+When they are absent, M4 returns an explicit safe failure and does not
+construct protocol payloads. Application-owned closers registered in
+`ServiceSet.Closers` are released in reverse order after the UI exits.
