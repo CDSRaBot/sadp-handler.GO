@@ -92,8 +92,10 @@ func (t *ISAPIHTTPTransport) activate(ctx context.Context, base *url.URL, target
 	}
 	status, err := t.status(ctx, base, target)
 	if err != nil {
+		status.Operation = OperationActivation
 		return status, err
 	}
+	status.Operation = OperationActivation
 	return status, nil
 }
 

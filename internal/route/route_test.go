@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"strings"
@@ -27,21 +28,23 @@ func (f *fakeTransport) Execute(context.Context, Operation, Target) (Result, err
 type fakeRoutes struct {
 	calls int
 	ok    bool
+	err   error
 }
 
 func (f *fakeRoutes) CanReach(context.Context, netip.Addr, string) (bool, error) {
 	f.calls++
-	return f.ok, nil
+	return f.ok, f.err
 }
 
 type fakeCapabilities struct {
 	calls int
 	ok    bool
+	err   error
 }
 
 func (f *fakeCapabilities) Supports(context.Context, Target, Operation) (bool, error) {
 	f.calls++
-	return f.ok, nil
+	return f.ok, f.err
 }
 
 func testTarget() Target {
@@ -95,6 +98,21 @@ func TestSADPUnavailableFallsBackOnlyWithRouteAndCapability(t *testing.T) {
 	}
 	if result.Protocol != "isapi" || routes.calls != 1 || capabilities.calls != 1 {
 		t.Fatalf("fallback was not gated: result=%+v routes=%d capabilities=%d", result, routes.calls, capabilities.calls)
+	}
+}
+
+func TestSADPUnavailableWithNilISAPITransportReturnsInvalidInput(t *testing.T) {
+	sadp := &fakeTransport{err: &Error{Kind: ErrorSADPUnavailable, Err: errors.New("multicast blocked")}}
+	selector, err := NewSelector(StrategySADPFirst, Dependencies{
+		SADP: sadp, Routes: &fakeRoutes{ok: true}, Capability: &fakeCapabilities{ok: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = selector.Execute(context.Background(), OperationStatus, testTarget())
+	var routeErr *Error
+	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorInvalidInput {
+		t.Fatalf("expected invalid input, got %v", err)
 	}
 }
 
@@ -156,7 +174,9 @@ func TestAuthenticationFailureNeverFallsBack(t *testing.T) {
 func TestExplicitISAPIDoesNotAttemptSADP(t *testing.T) {
 	sadp := &fakeTransport{}
 	isapi := &fakeTransport{result: Result{Protocol: "isapi"}}
-	selector, err := NewSelector(StrategyISAPIOnly, Dependencies{SADP: sadp, ISAPI: isapi})
+	selector, err := NewSelector(StrategyISAPIOnly, Dependencies{
+		SADP: sadp, ISAPI: isapi, Routes: &fakeRoutes{ok: true}, Capability: &fakeCapabilities{ok: true},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,6 +186,92 @@ func TestExplicitISAPIDoesNotAttemptSADP(t *testing.T) {
 	}
 	if result.Protocol != "isapi" || sadp.calls != 0 || isapi.calls != 1 {
 		t.Fatalf("unexpected explicit route: result=%+v sadp=%d isapi=%d", result, sadp.calls, isapi.calls)
+	}
+}
+
+func TestISAPIOnlyRequiresRouteAndCapabilityBeforeTransport(t *testing.T) {
+	isapi := &fakeTransport{}
+	selector, err := NewSelector(StrategyISAPIOnly, Dependencies{ISAPI: isapi})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = selector.Execute(context.Background(), OperationStatus, testTarget())
+	var routeErr *Error
+	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorInvalidInput {
+		t.Fatalf("expected invalid input, got %v", err)
+	}
+	if isapi.calls != 0 {
+		t.Fatalf("ISAPI transport called despite missing providers: %d", isapi.calls)
+	}
+}
+
+func TestISAPIOnlyChecksReachabilityBeforeCapabilityAndTransport(t *testing.T) {
+	isapi := &fakeTransport{}
+	routes := &fakeRoutes{ok: false}
+	capabilities := &fakeCapabilities{ok: true}
+	selector, err := NewSelector(StrategyISAPIOnly, Dependencies{
+		ISAPI: isapi, Routes: routes, Capability: capabilities,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = selector.Execute(context.Background(), OperationStatus, testTarget())
+	var routeErr *Error
+	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorNoRoute {
+		t.Fatalf("expected no-route, got %v", err)
+	}
+	if routes.calls != 1 || capabilities.calls != 0 || isapi.calls != 0 {
+		t.Fatalf("unexpected provider calls: routes=%d capabilities=%d isapi=%d", routes.calls, capabilities.calls, isapi.calls)
+	}
+}
+
+func TestUnknownOperationRejectedBeforeNetworkIO(t *testing.T) {
+	sadp := &fakeTransport{}
+	selector, err := NewSelector(StrategySADPFirst, Dependencies{SADP: sadp})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = selector.Execute(context.Background(), Operation("bogus"), testTarget())
+	var routeErr *Error
+	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorInvalidInput {
+		t.Fatalf("expected invalid input, got %v", err)
+	}
+	if sadp.calls != 0 {
+		t.Fatalf("SADP transport called for unknown operation: %d", sadp.calls)
+	}
+}
+
+func TestProviderContextErrorsPreserveTerminalClassification(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		kind ErrorKind
+	}{
+		{"route canceled", context.Canceled, ErrorCanceled},
+		{"capability deadline", context.DeadlineExceeded, ErrorTimeout},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sadp := &fakeTransport{err: &Error{Kind: ErrorSADPUnavailable, Err: errors.New("unavailable")}}
+			routes := &fakeRoutes{ok: true}
+			capabilities := &fakeCapabilities{ok: true}
+			if test.kind == ErrorCanceled {
+				routes.err = fmt.Errorf("route provider: %w", test.err)
+			} else {
+				capabilities.err = fmt.Errorf("capability provider: %w", test.err)
+			}
+			selector, err := NewSelector(StrategySADPFirst, Dependencies{
+				SADP: sadp, ISAPI: &fakeTransport{}, Routes: routes, Capability: capabilities,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = selector.Execute(context.Background(), OperationStatus, testTarget())
+			var routeErr *Error
+			if !errors.As(err, &routeErr) || routeErr.Kind != test.kind || !errors.Is(err, test.err) {
+				t.Fatalf("expected %s preserving cause, got %v", test.kind, err)
+			}
+		})
 	}
 }
 

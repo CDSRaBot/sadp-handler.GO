@@ -61,7 +61,7 @@ func TestISAPIHTTPTransportRunsActivationAndVerification(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
-	if result.Protocol != "isapi" || result.Operation != OperationStatus {
+	if result.Protocol != "isapi" || result.Operation != OperationActivation {
 		t.Fatalf("unexpected result: %#v", result)
 	}
 	if activatedPayload.Password == "" || strings.Contains(activatedPayload.Password, transport.Password) {
