@@ -12,16 +12,29 @@ import (
 
 func TestParseRuntimeArgsSeparatesGlobalOptionsAndOneShotCommand(t *testing.T) {
 	config, command, err := ui.ParseRuntimeArgs([]string{
-		"--ui=no", "--format=json", "--lang", "ru", "--once", "version",
+		"--ui=no", "--format=json", "--lang", "ru", "--protocol", "isapi_only", "--once", "version",
 	})
 	if err != nil {
 		t.Fatalf("ParseRuntimeArgs returned error: %v", err)
 	}
-	if config.Mode != "no" || config.Format != ui.FormatJSON || config.Language != "ru" || !config.Once {
+	if config.Mode != "no" || config.Format != ui.FormatJSON || config.Language != "ru" ||
+		config.Protocol != "isapi_only" || !config.Once {
 		t.Fatalf("config = %#v", config)
 	}
 	if len(command) != 1 || command[0] != "version" {
 		t.Fatalf("command = %#v", command)
+	}
+}
+
+func TestParseRuntimeArgsRejectsInvalidProtocol(t *testing.T) {
+	for _, args := range [][]string{
+		{"--protocol", "unknown"},
+		{"--protocol=unknown"},
+		{"--protocol"},
+	} {
+		if _, _, err := ui.ParseRuntimeArgs(args); err == nil {
+			t.Fatalf("ParseRuntimeArgs(%#v) succeeded; want protocol error", args)
+		}
 	}
 }
 

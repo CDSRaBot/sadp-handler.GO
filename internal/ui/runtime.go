@@ -37,7 +37,7 @@ func ParseRuntimeArgsWithDefaults(args []string, defaults RuntimeUIConfig) (Runt
 				return RuntimeUIConfig{}, nil, errors.New("--once cannot be repeated")
 			}
 			config.Once = true
-		case arg == "--ui" || arg == "--format" || arg == "--lang":
+		case arg == "--ui" || arg == "--format" || arg == "--lang" || arg == "--protocol":
 			if i+1 >= len(args) {
 				return RuntimeUIConfig{}, nil, fmt.Errorf("%s requires a value", arg)
 			}
@@ -56,6 +56,10 @@ func ParseRuntimeArgsWithDefaults(args []string, defaults RuntimeUIConfig) (Runt
 			}
 		case strings.HasPrefix(arg, "--lang="):
 			if err := applyRuntimeOption(&config, "--lang", strings.TrimPrefix(arg, "--lang=")); err != nil {
+				return RuntimeUIConfig{}, nil, err
+			}
+		case strings.HasPrefix(arg, "--protocol="):
+			if err := applyRuntimeOption(&config, "--protocol", strings.TrimPrefix(arg, "--protocol=")); err != nil {
 				return RuntimeUIConfig{}, nil, err
 			}
 		default:
@@ -100,6 +104,11 @@ func applyRuntimeOption(config *RuntimeUIConfig, option, value string) error {
 		config.Format = value
 	case "--lang":
 		config.Language = value
+	case "--protocol":
+		if value != "sadp_first" && value != "isapi_only" {
+			return errors.New("--protocol must be sadp_first or isapi_only")
+		}
+		config.Protocol = value
 	default:
 		return errors.New("unknown runtime option")
 	}

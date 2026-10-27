@@ -161,6 +161,7 @@ type RuntimeUIConfig struct {
 	Format   string
 	Language string
 	Once     bool
+	Protocol string
 }
 
 type Dependencies struct {

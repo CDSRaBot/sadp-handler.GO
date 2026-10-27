@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/CDSRaBot/sadp-handler.GO/internal/app"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/config"
@@ -21,6 +24,23 @@ func run() int {
 		fmt.Fprintln(os.Stderr, err)
 		return ui.ExitInvalidInput
 	}
+	runtimeDefaults := ui.RuntimeUIConfig{
+		Mode:     settings.UI.Mode,
+		Format:   settings.UI.Format,
+		Language: settings.UI.Language,
+		Once:     settings.UI.Once,
+		Protocol: settings.Protocol.Strategy,
+	}
+	runtimeUI, _, err := ui.ParseRuntimeArgsWithDefaults(os.Args[1:], runtimeDefaults)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return ui.ExitInvalidInput
+	}
+	settings.UI.Mode = runtimeUI.Mode
+	settings.UI.Format = runtimeUI.Format
+	settings.UI.Language = runtimeUI.Language
+	settings.UI.Once = runtimeUI.Once
+	settings.Protocol.Strategy = runtimeUI.Protocol
 	baseDir, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -36,8 +56,6 @@ func run() int {
 		fmt.Fprintln(os.Stderr, err)
 		return ui.ExitOperational
 	}
-	defer logging.Close()
-
 	session := ui.NewM6DiscoverySessionService()
 	session.Multicast = runtime.Network
 	locales, err := app.NewLocalizationService(runtime.Localization.FS, app.DefaultEnglishCatalog())
@@ -53,14 +71,17 @@ func run() int {
 			Help:             app.DefaultEnglishCatalog()["ui.help"],
 			Version:          "dev",
 		},
+		Closers: []io.Closer{logging.LogFile},
 	})
 	defer func() {
 		if err := dependencies.Close(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		}
 	}()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	return ui.RunCLIWithDefaults(
-		context.Background(),
+		ctx,
 		os.Args[1:],
 		os.Stdin,
 		os.Stdout,

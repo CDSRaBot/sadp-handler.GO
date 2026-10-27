@@ -57,6 +57,13 @@ command arguments. M8 creates one immutable runtime configuration and passes it
 through typed dependencies. No package-level configuration provider or mutable
 global state is permitted.
 
+The executable parses global UI and protocol options before composing the
+runtime configuration. A supplied `--protocol=sadp_first|isapi_only` overrides
+the validated file value; command parsing is repeated only at the UI boundary
+using the already-resolved runtime defaults. The process context is canceled
+on interrupt or termination so owned discovery and workflow operations can
+release their resources.
+
 M8 configures logging before workflows start. The configured logger must not
 write secrets, packet payloads, passwords, challenges, or complete XML.
 
