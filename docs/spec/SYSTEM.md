@@ -4,7 +4,7 @@
 
 **SADP-handler** is a terminal-based Go utility for discovering, activating, and configuring Hikvision cameras and NVRs over the Search Active Device Protocol (SADP). Discovery targets devices on the local Layer 2 network, including devices that do not yet have an address usable by the host.
 
-The architecture baseline is established and the specifications define system boundaries, module APIs, and atomic procedures. The Python implementation is the verified behavioral baseline for discovery: it has been tested with real devices, finds them, and receives their responses. The Go implementation must preserve this behavior and be validated against the same real-device scenario. SADP activation identifies its target by MAC address and uses the SADP XML request defined by M3. The `SHA-256(UTF-8(password + challenge))` challenge-response calculation is accepted as verified by practical experiments. End-to-end Go operations still require implementation and integration tests; details not covered by those experiments remain explicitly open.
+The architecture baseline is established and the specifications define system boundaries, module APIs, and atomic procedures. The Python implementation is the verified behavioral baseline for discovery: it has been tested with real devices, finds them, and receives their responses. The Go implementation now contains the core discovery, configuration, logic, UI, and route components and must preserve this behavior through repository and real-device validation. SADP activation identifies its target by MAC address and uses the SADP XML request defined by M3. The `SHA-256(UTF-8(password + challenge))` challenge-response calculation is accepted as verified by practical experiments. Production SADP mutation exchange and complete application wiring remain tracked implementation work; details not covered by those experiments remain explicitly open.
 
 ## 2. Functional Scope
 
@@ -15,7 +15,7 @@ The system is designed to provide:
 3. **Network configuration** — configure device IP address, subnet mask, gateway, and DHCP state.
 4. **CLI operation** — expose these workflows to users and automation with a shared command catalog and typed results. The default user-facing mode is a full-screen TUI; `--ui=no` starts an interactive CLI REPL, and `--ui=no --once` runs one command from process arguments and exits.
 
-These are target capabilities, not a claim that end-to-end device operations are currently implemented. Bulk activation and network configuration must report per-device outcomes so a failure for one device does not conceal the result for others. M3 defines the SADP activation request, while its end-to-end sender/result workflow and network-configuration transport/result workflow must be completed before those commands are enabled.
+These are target capabilities, with discovery and core application components implemented and mutation production workflows still being completed. Bulk activation and network configuration must report per-device outcomes so a failure for one device does not conceal the result for others. M3 defines the SADP activation request, while its end-to-end sender/result workflow and network-configuration transport/result workflow must be completed before those commands are enabled.
 
 ## 3. Module Boundaries
 
@@ -209,11 +209,11 @@ The Python implementation's successful real-device discovery is verified behavio
 - The default `MaxSADPDatagramSize` is 1500 bytes and is configurable through settings as specified above. M1 and M2 must use the same resolved setting and the receiver must detect/reject truncation and oversize datagrams.
 - Continue to verify activation response/result behavior and the network-configuration request/response flow separately; request/hash confirmation alone does not establish all device outcome semantics or cross-model behavior.
 - Verify per-interface UDP multicast behavior and cancellation/cleanup on each supported OS. In particular, do not reproduce the Python Windows branch without evidence that it receives the intended SADP replies.
-- Finalize package paths before implementation. The module path is set in `go.mod`; API signatures in module documents are design contracts, not implemented symbols.
+- Package paths are rooted at the module path in `go.mod`; module documents remain the contract for APIs whose production implementation is still being completed.
 
 Encrypted ISAPI user-field handling is specified in the [protocol report](./reports/ISAPI_ENCRYPTED_USER_FIELDS.md) and detailed SADP/ISAPI pipelines. This documents the protocol contract; it does not claim that the workflow is implemented.
 
-The Go implementation has not started, so Go parity with the verified Python discovery baseline remains to be implemented and tested. The unresolved items above do not invalidate the confirmed Python discovery behavior; they limit claims about unverified protocol details, other devices/platforms, and activation or network configuration.
+The Go implementation is in progress: core discovery and application components exist, while production mutation exchange, complete route wiring, and parity with the verified Python discovery baseline still require targeted validation. The unresolved items above do not invalidate the confirmed Python discovery behavior; they limit claims about unverified protocol details, other devices/platforms, and activation or network configuration.
 
 ### M9: Protocol Route
 
