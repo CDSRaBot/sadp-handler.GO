@@ -11,6 +11,20 @@ wire fields and accepted encodings must come from approved device fixtures.
 This procedure must not infer a field name, status value, or success response
 from an undocumented capture.
 
+The SDK-backed ISAPI terminal SADP-management endpoints documented for
+`/ISAPI/Publish/TerminalMgr/terminals/discovery` do not define the raw SADP
+UDP challenge exchange. Their documented failure response is
+`XML_ResponseStatus`; it must not be treated as a challenge response. The
+ISAPI `/ISAPI/Security/challenge` flow is a separate HTTP security procedure
+and is not a SADP datagram fixture.
+
+For the ISAPI terminal-management surface, the approved response grammar may
+use `ResponseStatus` fields and the documented functional codes
+`0x01400004` (`notActivated`), `0x01400005` (`hasActivated`),
+`0x01400006` (`forbiddenIP`), and `0x01400007`
+(`bondMacAddressNotMatch`). These statuses are device/authentication
+outcomes, not usable challenge values.
+
 ## 2. Go Contract
 
 ```go

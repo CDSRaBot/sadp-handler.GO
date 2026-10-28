@@ -2,10 +2,26 @@
 ## Module: M3 - Device Logic
 
 This catalog defines the semantic cases that Issue #45 must encode as
-deterministic test fixtures. It is normative for expected outcomes, but it
-does not invent undocumented wire element names or status values. A fixture
-may use a captured device response only after its source, target correlation,
-and field mapping are approved.
+deterministic test fixtures. It is normative for expected outcomes. It
+contains separate fixture tracks for SDK-documented ISAPI terminal
+SADP-management and raw SADP UDP mutation. A fixture may use a captured
+device response only after its source, target correlation, and field mapping
+are approved.
+
+The Hikvision SDK confirms the following ISAPI track:
+
+- `GET /ISAPI/Publish/TerminalMgr/terminals/discovery/capabilities`;
+- `GET /ISAPI/Publish/TerminalMgr/terminals/discovery/<ID>`;
+- `PUT /ISAPI/Publish/TerminalMgr/terminals/discovery`;
+- `DiscoveryMode` and `DiscoveryModeCfg` roots in
+  `http://www.isapi.org/ver20/XMLSchema`;
+- `XML_ResponseStatus` for failures and for the `PUT` operation;
+- functional codes `0x01400004` through `0x01400007` listed in
+  `parse_mutation_response.md`.
+
+These facts approve ISAPI fixture grammar only. They do not approve raw SADP
+UDP `TargetMAC`, `SecurityResponse`, challenge, sender-correlation, or
+mutation-response fields.
 
 All values in test data are synthetic. Fixture names are stable identifiers;
 they are not wire-level protocol values.
@@ -14,6 +30,7 @@ they are not wire-level protocol values.
 
 Each fixture records:
 
+- protocol track: `isapi_terminal_sadp` or `sadp_udp`;
 - operation: `activation` or `network`;
 - requested target MAC and expected sender;
 - request payload bytes or a builder input;
@@ -46,6 +63,22 @@ not normalize them before the parser receives them.
 | `duplicate-target` | either | The same normalized target is supplied more than once | explicit validation failure before secret input |
 | `secret-redaction` | either | Synthetic password, challenge, hash, XML, and payload canary values flow through failures | none of the canaries appear in errors, logs, CLI, or TUI |
 
+## 2.1 SDK-backed ISAPI terminal SADP fixtures
+
+| Fixture ID | Request | Response grammar | Expected result |
+| --- | --- | --- | --- |
+| `isapi-sadp-capabilities-accepted` | `GET .../discovery/capabilities` | `XML_Cap_DiscoveryMode` | parsed capability |
+| `isapi-sadp-read-accepted` | `GET .../discovery/<ID>` | `DiscoveryMode` | parsed SADP discovery configuration |
+| `isapi-sadp-write-accepted` | `PUT .../discovery` | `ResponseStatus` with documented OK status | `accepted` |
+| `isapi-sadp-not-activated` | any supported request | `MErrCode=0x01400004`, `subStatusCode=notActivated` | terminal device state error |
+| `isapi-sadp-has-activated` | activation/state operation | `MErrCode=0x01400005`, `subStatusCode=hasActivated` | terminal already-active error |
+| `isapi-sadp-forbidden-ip` | any supported request | `MErrCode=0x01400006`, `subStatusCode=forbiddenIP` | terminal authentication/access error |
+| `isapi-sadp-mac-mismatch` | any supported request | `MErrCode=0x01400007`, `subStatusCode=bondMacAddressNotMatch` | terminal correlation/authentication error |
+
+The exact `statusCode`/`statusString` success pair must be taken from the
+response fixture for the endpoint. The fixture must not infer success from an
+HTTP status alone.
+
 ## 3. Fixture approval rules
 
 - A success fixture must identify the exact fields that prove acceptance.
@@ -57,6 +90,12 @@ not normalize them before the parser receives them.
   sender metadata.
 - A fixture cannot be marked approved when its expected result depends on an
   undocumented response field or guessed status value.
+- An ISAPI fixture must record its URI, HTTP method, XML root, namespace,
+  response-status fields, and SDK source topic.
+- An `isapi_terminal_sadp` fixture must not be reused as a `sadp_udp` fixture.
+- A `sadp_udp` fixture remains unapproved until the raw datagram grammar,
+  target identity, sender correlation, and response status are sourced from a
+  SADP protocol specification or an approved device capture.
 
 ## 4. Test ordering
 

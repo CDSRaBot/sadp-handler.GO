@@ -31,6 +31,33 @@ SADP and ISAPI are separate protocol layers:
 | SADP | Local discovery and device-management commands | UDP multicast/broadcast, normally port 37020 | Protocol command semantics; not HTTP Digest |
 | ISAPI | Per-device control and status | HTTP or HTTPS | Usually HTTP Digest; Basic may exist on legacy/configured devices |
 
+### SDK-documented ISAPI SADP management
+
+The Hikvision Device Network SDK Information Release guide documents terminal
+SADP configuration as an ISAPI HTTP surface:
+
+| Operation | Method and URI | Message |
+| --- | --- | --- |
+| Read SADP capability | `GET /ISAPI/Publish/TerminalMgr/terminals/discovery/capabilities` | `XML_Cap_DiscoveryMode` |
+| Read terminal SADP parameters | `GET /ISAPI/Publish/TerminalMgr/terminals/discovery/<ID>` | `XML_DiscoveryMode` |
+| Set terminal SADP parameters | `PUT /ISAPI/Publish/TerminalMgr/terminals/discovery` | `XML_DiscoveryModeCfg` request and `XML_ResponseStatus` response |
+
+The documented XML roots use namespace
+`http://www.isapi.org/ver20/XMLSchema` and version `2.0`. The response
+status schema contains `requestURL`, `statusCode`, `statusString`,
+`subStatusCode`, optional `MErrCode`, and optional `MErrDevSelfEx`.
+
+The documented functional mappings include:
+
+- `0x01400004` / `notActivated`;
+- `0x01400005` / `hasActivated`;
+- `0x01400006` / `forbiddenIP`;
+- `0x01400007` / `bondMacAddressNotMatch`.
+
+These are normative for the ISAPI terminal-management route. They are not
+raw SADP UDP response fields and must not be used by the SADP datagram parser
+without an approved SADP wire fixture.
+
 The `Activated` state reported by SADP is the primary pre-activation signal.
 ISAPI access to an inactive device is not assumed to be available.
 

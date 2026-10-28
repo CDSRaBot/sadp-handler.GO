@@ -35,6 +35,33 @@ SADP и ISAPI являются разными уровнями:
 необходимости первичной активации. Доступ к ISAPI неактивного устройства
 нельзя считать гарантированным.
 
+### Управление SADP через ISAPI согласно SDK
+
+В руководстве Hikvision Device Network SDK Information Release настройка
+SADP терминала описана как HTTP-интерфейс ISAPI:
+
+| Операция | Метод и URI | Сообщение |
+| --- | --- | --- |
+| Получить возможности SADP | `GET /ISAPI/Publish/TerminalMgr/terminals/discovery/capabilities` | `XML_Cap_DiscoveryMode` |
+| Получить SADP-параметры терминала | `GET /ISAPI/Publish/TerminalMgr/terminals/discovery/<ID>` | `XML_DiscoveryMode` |
+| Установить SADP-параметры терминала | `PUT /ISAPI/Publish/TerminalMgr/terminals/discovery` | Запрос `XML_DiscoveryModeCfg`, ответ `XML_ResponseStatus` |
+
+Документированные XML-корни используют пространство имён
+`http://www.isapi.org/ver20/XMLSchema` и версию `2.0`. Схема статуса ответа
+содержит `requestURL`, `statusCode`, `statusString`, `subStatusCode`,
+необязательные `MErrCode` и `MErrDevSelfEx`.
+
+Документированы следующие функциональные коды:
+
+- `0x01400004` / `notActivated`;
+- `0x01400005` / `hasActivated`;
+- `0x01400006` / `forbiddenIP`;
+- `0x01400007` / `bondMacAddressNotMatch`.
+
+Эти значения нормативны для маршрута управления терминалом через ISAPI. Они
+не являются полями ответа raw SADP UDP и не должны использоваться парсером
+SADP-датаграмм без утверждённой wire-fixture SADP.
+
 ## 3. Общие инварианты
 
 Каждая процедура ОБЯЗАНА:

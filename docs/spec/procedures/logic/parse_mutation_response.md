@@ -12,6 +12,49 @@ names, status values, and required fields are normative only when present in
 the approved operation fixtures. Unknown or undocumented values never imply
 success.
 
+## 1.1 SDK-backed ISAPI grammar
+
+The Hikvision Device Network SDK Information Release guide defines an ISAPI
+terminal SADP-management surface distinct from the raw SADP UDP mutation
+protocol:
+
+| Operation | Method and URI | Success response | Failure response |
+| --- | --- | --- | --- |
+| Read terminal SADP capability | `GET /ISAPI/Publish/TerminalMgr/terminals/discovery/capabilities` | `XML_Cap_DiscoveryMode` | `XML_ResponseStatus` |
+| Read terminal SADP parameters | `GET /ISAPI/Publish/TerminalMgr/terminals/discovery/<ID>` | `XML_DiscoveryMode` | `XML_ResponseStatus` |
+| Set terminal SADP parameters | `PUT /ISAPI/Publish/TerminalMgr/terminals/discovery` | `XML_ResponseStatus` | `XML_ResponseStatus` |
+
+The corresponding request and response schemas are:
+
+- `DiscoveryMode` with namespace
+  `http://www.isapi.org/ver20/XMLSchema` and version `2.0`;
+- `DiscoveryModeCfg` with the same namespace and version;
+- `ResponseStatus` with `requestURL`, `statusCode`, `statusString`,
+  `subStatusCode`, optional `MErrCode`, and optional `MErrDevSelfEx`.
+
+The documented discovery configuration fields are `ONVIFDiscoveryMode`,
+`ISDiscoveryMode`, `PcapMode`, and `SADP`, with values
+`discoverable` or `nonDiscoverable`. `DiscoveryModeCfg` additionally carries
+the operation selector and terminal/organization lists.
+
+The functional error table documents these activation-related mappings:
+
+| `MErrCode` | `subStatusCode` | Meaning |
+| --- | --- | --- |
+| `0x01400004` | `notActivated` | Device is not activated |
+| `0x01400005` | `hasActivated` | Device has been activated |
+| `0x01400006` | `forbiddenIP` | IP address is banned |
+| `0x01400007` | `bondMacAddressNotMatch` | MAC address does not match the user |
+
+These mappings are normative for the documented ISAPI/Text Protocol response
+grammar. They must not be used as evidence that the same fields or codes are
+present in a raw SADP UDP response.
+
+**Source:** Hikvision *Device Network SDK (Information Release) Developer
+Guide V6.1.7.X*, topics `/ISAPI/Publish/TerminalMgr/terminals/discovery`,
+`XML_DiscoveryMode`, `XML_DiscoveryModeCfg`, `XML_ResponseStatus`, and
+*Error Codes Categorized by Functional Modules*.
+
 ## 2. Go Contract
 
 ```go
