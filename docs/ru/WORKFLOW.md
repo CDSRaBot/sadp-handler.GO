@@ -1,13 +1,15 @@
 # Диаграмма работы и workflow SADP-handler
 
-Документ сводит спецификации системы в единое представление: какие модули
+Документ сводит актуальные спецификации системы, подтверждённые наблюдения
+SADP SDK и доверенные процедуры ISAPI в единое представление: какие модули
 участвуют в запуске, как проходят данные и действия пользователя, где
-возникают ошибки и как завершается операция.
+возникают ошибки и как проверяется результат.
 
-> Статус: это модель целевой архитектуры. Go-реализация приложения ещё не
-> начата. Discovery основан на проверенном Python-поведенческом референсе;
-> сквозные `activate` и `network` требуют отдельной реализации и проверки
-> ответов устройств.
+> Статус: целевая модель с подтверждёнными wire-фактами. Discovery и
+> базовая композиция приложения реализованы частично. Команды изменения
+> устройства должны включаться только после появления соответствующего
+> wire-profile и post-condition проверки; неизвестные криптографические
+> форматы нельзя восполнять предположениями.
 
 ## 1. Границы системы
 
@@ -19,10 +21,11 @@ flowchart TB
     App[M8 Application Composition]
     Config[M7 Configuration<br/>settings.json + defaults + CLI overrides]
     I18n[M5 Localization<br/>catalog + active locale]
-    Adapter[M0 Platform Adapter<br/>interfaces + multicast socket]
+    Adapter[M0 Platform Adapter<br/>interfaces + multicast channels]
     Discovery[M6 Discovery Coordinator]
-    Network[M1 Network Engine<br/>UDP send / receive]
-    Parser[M2 Data Parser<br/>XML -> Device]
+    Route[M9 Protocol Route<br/>SADP first / ISAPI only]
+    Network[M1 Network Engine<br/>UDP + HTTP transport]
+    Parser[M2 Data Parser<br/>XML -> Device / Result]
     Logic[M3 Logic Engine<br/>validation + XML workflows]
     Device[(Hikvision device)]
     Logger[(.\logs<br/>slog, rotation 5 MiB)]
@@ -34,23 +37,30 @@ flowchart TB
     App --> I18n
     App --> Adapter
     App --> Discovery
+    App --> Route
     App --> Logic
     App --> Logger
 
     UI --> Discovery
+    UI --> Route
     UI --> Logic
     UI --> I18n
     Discovery --> Adapter
     Discovery --> Network
     Discovery --> Parser
+    Route --> Discovery
+    Route --> Network
+    Route --> Logic
     Network <--> Device
     Logic --> Network
     Parser --> UI
     Discovery --> UI
+    Route --> UI
     Logic --> UI
 
     UI -. safe diagnostic events .-> Logger
     Discovery -. safe diagnostic events .-> Logger
+    Route -. safe diagnostic events .-> Logger
     Network -. safe diagnostic events .-> Logger
     Logic -. safe diagnostic events .-> Logger
 ```
@@ -61,13 +71,18 @@ flowchart TB
 |---|---|---|
 | M7 | Читает `settings.json`, проверяет схему, применяет defaults | Не подменяет ошибочный существующий файл defaults |
 | M8 | Один раз собирает типизированный `RuntimeConfig` и зависимости | Не передаёт JSON-схему нижележащим пакетам |
-| M0 | Перечисляет интерфейсы и открывает multicast-соединение | Не отправляет probe и не разбирает XML |
-| M1 | Передаёт/принимает UDP-датаграммы, соблюдает cancellation и лимиты | Не принимает бизнес-решения по устройству |
-| M2 | Проверяет размер/XML/обязательные поля и строит `Device` | Не выполняет сетевые действия |
-| M6 | Координирует одну discovery-сессию на одном интерфейсе | Не выбирает интерфейсы и не дедуплицирует устройства |
-| M3 | Валидирует команды, строит activation/network XML и возвращает исходы | Не отвечает за UI или платформенный socket setup |
+| M0 | Проверяет интерфейсы и открывает доступные IPv4 multicast/subnet-каналы | Не отправляет команды и не разбирает XML |
+| M1 | Передаёт/принимает UDP и HTTP(S), соблюдает cancellation и лимиты | Не принимает бизнес-решения и не выбирает fallback |
+| M2 | Проверяет размер/XML/обязательные поля и строит `Device`/результат | Не выполняет сетевые действия |
+| M6 | Координирует discovery и коррелирует ответы по MAC/UUID/Types | Не выбирает протокол для операции |
+| M9 | Выбирает SADP или ISAPI и классифицирует конечный результат | Не меняет маршрутизацию, firewall или адрес интерфейса |
+| M3 | Валидирует команды, строит поддержанные payload и post-condition | Не отвечает за UI или platform socket setup |
 | M4 | Парсит ввод, вызывает typed services и показывает результат | Не открывает sockets и не строит SADP XML |
 | M5 | Загружает и атомарно переключает каталоги локализации | Не управляет CLI и не рисует терминал |
+
+SADP и ISAPI являются разными протоколами. `Activated=true` из SADP
+является признаком состояния устройства, но не заменяет проверку
+авторизованного ISAPI-доступа после активации.
 
 ## 2. Запуск приложения и подготовка runtime
 
@@ -92,7 +107,7 @@ sequenceDiagram
     end
     E->>C: Apply CLI overrides
     E->>A: Compose(settings, baseDir)
-    A->>A: Resolve paths, durations, multicast, log level
+    A->>A: Resolve paths, durations, multicast, route policy
     A->>G: Initialize .\logs and slog handler
     G-->>A: logger или startup error
     A->>L: ResolveLocale + LoadLocale
@@ -102,13 +117,33 @@ sequenceDiagram
     UI-->>U: TUI, REPL или one-shot result
 ```
 
-**Правила отказа:** malformed/invalid present `settings.json`, невозможный
-путь локализации, ошибка создания `.\\logs`, неподдерживаемый режим или
-невалидные CLI-флаги завершают запуск до открытия сетевого сокета. В JSON
-режиме результат команды идёт в `stdout`, prompt и диагностика не смешиваются
-с ним.
+До открытия сетевого сокета завершаются проверка конфигурации, путей,
+локализации, логирования, режима UI и CLI-флагов. В JSON-режиме `stdout`
+содержит только результат команды; prompt и диагностика туда не попадают.
 
-## 3. Discovery: передача информации и действий
+## 3. Подготовка SADP-сеанса
+
+Для каждого локального интерфейса приложение независимо пытается создать
+пригодный IPv4 SADP-канал. Ошибка Bluetooth, Wi-Fi Direct, pcap или другого
+непригодного интерфейса не должна останавливать сеанс, если остался хотя бы
+один рабочий IPv4-канал.
+
+```mermaid
+flowchart TD
+    A[Перечислить интерфейсы] --> B{Есть IPv4 и канал?}
+    B -- нет --> C[Per-interface diagnostic]
+    B -- да --> D[IPv4 multicast socket]
+    D --> E[Дополнительные IPv6/local/subnet каналы]
+    E --> F{Есть рабочий IPv4 SADP-канал?}
+    F -- нет --> X[Startup/transport error]
+    F -- да --> G[Сеанс готов]
+```
+
+Основной IPv4 endpoint — `239.255.255.250:37020`; IPv6 и локальные каналы
+являются дополнительными. Идентичность устройства всегда сохраняется по
+MAC, а IP является только текущим адресом управления.
+
+## 4. Discovery: передача информации и действий
 
 ```mermaid
 sequenceDiagram
@@ -122,171 +157,244 @@ sequenceDiagram
     participant K as Device
 
     U->>UI: discover --interface 4 --timeout 5s --repeat 1
-    UI->>UI: Parse command -> typed Command
+    UI->>UI: Parse + normalize options
     UI->>D: DiscoverOnInterface(ctx, iface, options, handler)
-    D->>D: Validate policy and datagram size
-    D->>AD: OpenMulticast(iface, 239.255.255.250:37020, TTL=64)
-    AD-->>D: PacketConn (ownership transferred to listener)
-    D->>N: SendInquiryProbe(ctx, conn, target)
-    N->>K: UDP multicast XML Probe
-    par Receive loop
-        K-->>N: UDP ProbeMatch or Hello datagram + sender
-        N->>D: []byte, net.Addr
+    D->>AD: Open available SADP channels
+    AD-->>D: owned PacketConn(s)
+    D->>N: Send inquiry(Uuid, Types=inquiry, ResponseMode=2)
+    N->>K: UDP multicast/broadcast probe
+    loop До deadline или отмены
+        K-->>N: ProbeMatch / Hello + фактический sender
+        N->>D: payload, sender
         D->>P: ParseAdvertisement(payload, maxSize)
-        alt Valid advertisement
-            P-->>D: parser.Device
-            D->>UI: Event{DeviceFound, Device, Sender, ObservedAt}
-            UI-->>U: device row / text / JSON result
-        else Invalid, oversized or incomplete datagram
-            P-->>D: parse error
-            D->>UI: Event{DatagramRejected, Sender, Err}
-            UI-->>U: safe diagnostic; continue listening
+        P-->>D: Device or typed rejection
+        D->>D: Validate MAC, UUID, Types and deduplicate
+        alt New valid device
+            D->>UI: DeviceFound(Device, sender, ObservedAt)
+            UI-->>U: device row / JSON result
+        else Invalid or duplicate datagram
+            D->>UI: DatagramRejected or ignored duplicate
         end
-    and Schedule
-        D->>N: next probe immediately or at ProbeInterval
-        N->>K: one independent UDP inquiry datagram
     end
     U->>UI: Ctrl+C / quit / timeout complete
     UI->>D: cancel context
-    D->>N: stop and join scheduled writer
-    D->>N: cancel listener context
-    N->>N: close transferred connection
-    N-->>D: nil on normal cancellation or typed error
-    D-->>UI: final result / partial events / error
+    D->>N: stop writers, close owned connections
+    D-->>UI: partial results + typed error if any
 ```
 
-### Формат данных discovery
+Критерии принятия `ProbeMatch`:
 
-| Шаг | Данные | Инварианты |
-|---|---|---|
-| UI → M6 | `Interface`, `DiscoveryOptions`, `context.Context` | Один явно выбранный интерфейс; timing policy ровно continuous или bounded |
-| M6 → M0 | `MulticastOptions` | По умолчанию `239.255.255.250:37020`, TTL `64` |
-| M1 → M6 | `payload []byte`, `net.Addr` | Payload недоверенный; sender сохраняется; размер ограничен |
-| M2 → M6 | `parser.Device` или error | Только валидированные обязательные поля |
-| M6 → UI | `DeviceFound` или `DatagramRejected` | Ошибка parse не роняет сессию, если handler её принял |
+1. payload не пустой и не превышает лимит;
+2. XML корректен, корень — `ProbeMatch` или подтверждённый `Hello`;
+3. `Types` соответствует ожидаемому типу;
+4. MAC является корректным EUI-48;
+5. IPv4 корректен либо находится в разрешённом промежуточном DHCP-состоянии
+   (`0.0.0.0` или `169.254.x.x`);
+6. фактический `sender` сохранён отдельно от адреса внутри XML;
+7. ответ связан с ожидаемыми MAC/UUID, а дубликаты loopback не создают новую
+   операцию.
 
-Probe отправляется один раз за вызов `SendInquiryProbe`. Повторение по
-таймеру является расписанием приложения и не означает корреляцию UUID,
-гарантированную повторную передачу или причинную связь с конкретным `Hello`.
+Повторная отправка probe по расписанию не означает гарантированную доставку
+или причинную связь с конкретным `Hello`.
 
-## 4. Workflow команд управления устройством
+## 5. Общий workflow команды изменения
 
-Сквозной transport/result workflow для этих операций должен быть реализован
-до включения команд. Ниже показан целевой поток, а не утверждение о текущей
-готовности приложения.
+Одна команда может породить несколько UDP-сообщений: непосредственный ответ,
+`update`, `inquiry` и локальную копию через loopback. Поэтому transport
+читает ответы до deadline, а не только первый пакет.
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor U as Пользователь
     participant UI as M4 UI
-    participant W as M3 Workflow
+    participant R as M9 Route
+    participant D as M6/M1 Transport
     participant L as M3 Logic
-    participant N as M1 Network
     participant K as Device
 
-    U->>UI: activate --device AA:BB:CC:DD:EE:FF --password-stdin
-    UI->>UI: Parse + normalize MAC + validate command
-    UI->>W: typed ActivationRequest
-    W->>L: ValidatePassword + BuildActivationXML
-    alt Input invalid
-        L-->>W: OperationInvalidInput
-        W-->>UI: per-device failure
-    else Payload built
-        L-->>W: UTF-8 Activate XML
-        W->>N: SendSADPDatagram(ctx, target, payload)
-        N->>K: one SADP activation datagram
-        K-->>N: device response
-        N-->>W: transport/result data
-        W-->>UI: success or OperationRejected/Transport/Canceled
-    end
+    U->>UI: команда с MAC и параметрами
+    UI->>L: typed request + credential source
+    L->>L: validate target, policy and operation
+    R->>R: choose SADP first or explicit ISAPI only
+    R->>D: send supported request
+    D->>K: one or more datagrams / HTTP requests
+    K-->>D: responses until deadline
+    D->>D: correlate MAC/UUID/Types; ignore duplicates
+    D->>L: classified response
+    L->>D: post-condition inquiry or authorized read
+    D-->>R: verified or unverified outcome
+    R-->>UI: per-device typed result
     UI-->>U: redacted text or JSON outcome
 ```
 
+Успех публикуется только после проверки post-condition. Для bulk-операции
+результат создаётся отдельно для каждого MAC; отказ одной цели не скрывает
+результаты остальных.
+
+### Правила M9
+
+- По умолчанию используется `sadp_first`; `isapi_only` выбирается явно.
+- Fallback к ISAPI разрешён только при классифицированной недоступности SADP,
+  подтверждённом маршруте к адресу и поддержке требуемой операции.
+- Отказ устройства, ошибка авторизации, некорректный ответ, отмена, timeout
+  и ошибка post-condition являются конечными исходами и не запускают fallback.
+- M9 не меняет таблицу маршрутизации, firewall или сетевые пространства.
+- Ответ нельзя принимать только потому, что его sender совпадает со старым
+  IP: после изменения допустим переход старый IP → новый IP, а при DHCP —
+  `0.0.0.0`/`169.254.x.x` → новый адрес. MAC остаётся якорем идентичности.
+
+## 6. Активация устройства
+
+### 6.1. SADP-профиль
+
 ```mermaid
 sequenceDiagram
-    autonumber
-    actor U as Пользователь
-    participant UI as M4 UI
-    participant W as M3 Workflow
-    participant L as M3 Logic
-    participant N as M1 Network
-    participant K as Device
+    participant App as Application
+    participant Cam as SADP device
 
-    U->>UI: network --device MAC --address 192.168.1.20/24 --gateway 192.168.1.1
-    UI->>W: typed NetworkConfig + credential source
-    W->>L: validate MAC/config/password/challenge
-    L->>L: CalculateHash(UTF-8(password + challenge))
-    L-->>W: NetworkParameter XML with SecurityResponse
-    W->>N: SendSADPDatagram(ctx, target, payload)
-    N->>K: one network configuration datagram
-    K-->>N: device result
-    N-->>W: transport/result data
-    W-->>UI: per-device outcome
-    UI-->>U: result without password/challenge/hash/XML
+    App->>Cam: Probe(Types=exchangecode, target MAC)
+    Cam-->>App: ProbeMatch(exchangecode, Result=success, Code)
+    App->>App: verify MAC, UUID and exchange lifetime
+    App->>Cam: Probe(Types=activate, protected password)
+    Cam-->>App: ProbeMatch(activate, Result=success)
+    App->>Cam: Probe(Types=inquiry)
+    Cam-->>App: ProbeMatch(inquiry, MAC, Activated=true)
+    App-->>App: ActivationAccepted
 ```
 
-Для нескольких устройств workflow создаёт отдельный результат на каждый MAC:
-ошибка одного устройства не должна скрывать успешные или неуспешные результаты
-остальных. Отсутствующий challenge — отказ `fail closed`, plaintext fallback
-не допускается.
+Последовательность `exchangecode → activate → update/inquiry` подтверждена,
+но точные поля `exchangecode`, `Code` и защищённого пароля ещё не
+восстановлены. Нельзя переносить в raw SADP RSA/AES-механику ISAPI.
+Если wire-profile не подтверждён, результатом является
+`unsupported/compatibility error`, а не plaintext fallback.
 
-## 5. Модель состояний сессии
+### 6.2. ISAPI-профиль
+
+Для проверенного профиля допустима последовательность:
+
+```text
+POST /ISAPI/Security/challenge
+PUT  /ISAPI/System/activate
+GET  /SDK/activateStatus
+```
+
+Профиль использует RSA-1024 с `e=65537`, challenge и AES-128-ECB, но это
+моделеспецифичная процедура, а не универсальный контракт. Успех требует
+`statusCode=1`/`subStatusCode=ok`, затем `Activated=true` и успешного
+авторизованного `GET /ISAPI/System/deviceInfo`.
+
+### 6.3. Проверка активации
+
+```text
+sadp = discover_by_target_mac(target_mac)
+require sadp.activated == true
+device = digest_get("/ISAPI/System/deviceInfo", new_credentials)
+require device.status is 2xx
+require parsed identity matches target MAC or serial
+```
+
+Один только HTTP `200`, SADP `success` или установленное поле
+`Activated=true` не доказывают рабочую административную учётную запись.
+
+## 7. Настройка сети
+
+### 7.1. SADP
+
+Для подтверждённого SADP-профиля используется `Types=update` с MAC цели,
+после чего ожидаются новые `update` и `inquiry`. Реальный SDK использует
+`<Password bSalt="true">`, а не текущий универсальный
+`<SecurityResponse>`. До получения wire-fixture защищённого поля операция
+не включается.
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Cam as Device
+
+    App->>App: validate MAC and static/DHCP plan
+    App->>Cam: Probe(Types=update, target MAC, protected password)
+    Cam-->>App: ProbeMatch(update, Result=success)
+    Note over Cam: address may change
+    Cam-->>App: update with new/intermediate IP
+    App->>Cam: Probe(Types=inquiry)
+    Cam-->>App: ProbeMatch(inquiry, MAC + network state)
+    App->>App: verify IP/mask/gateway/DHCP post-condition
+    App-->>App: NetworkConfigAccepted
+```
+
+### 7.2. ISAPI
+
+До записи интерфейса нужно прочитать его текущую конфигурацию:
+
+```text
+GET /ISAPI/System/Network/interfaces
+GET /ISAPI/System/Network/interfaces/{interface-id}
+PUT /ISAPI/System/Network/interfaces/{interface-id}
+PUT /ISAPI/System/reboot                 # только если явно требуется
+```
+
+Изменяются только проверенные адресные поля и режим DHCP/static; обязательные
+поля ответа устройства сохраняются. После разрыва соединения результат
+содержит MAC/serial цели, запрошенный план, наблюдаемый новый адрес и
+состояние проверки, но не credentials. Повторный авторизованный
+`deviceInfo` и сетевое состояние должны соответствовать плану.
+
+## 8. Дополнительные процедуры
+
+Контрольные вопросы — отдельная опциональная операция, а не обязательный
+этап активации:
+
+```text
+getsecurityquestion
+  -> exchangecode
+  -> setsecurityquestion
+  -> update/inquiry
+```
+
+Она выполняется только при наличии capability и явном запросе пользователя.
+Формат защищённых ответов и число вопросов не считаются универсальными.
+Аналогично, `SetHCPlatform` и Hik-Connect требуют отдельного wire-profile и
+не добавляются в активацию автоматически.
+
+## 9. Состояния сессии
 
 ```mermaid
 stateDiagram-v2
     [*] --> Validating
-    Validating --> OpeningSocket: policy valid
-    Validating --> Failed: invalid context/options/interface
-    OpeningSocket --> SendingInitialProbe: socket opened
-    OpeningSocket --> Failed: bind/permission/platform error
-    SendingInitialProbe --> Listening: send success
+    Validating --> OpeningChannels: policy valid
+    Validating --> Failed: invalid context/options/target
+    OpeningChannels --> SendingInitialProbe: usable IPv4 channel
+    OpeningChannels --> Failed: no usable channel
+    SendingInitialProbe --> Receiving: write success
     SendingInitialProbe --> Failed: encode/write/short write
-    Listening --> Listening: valid datagram -> DeviceFound
-    Listening --> Listening: rejected datagram -> DatagramRejected
-    Listening --> Scheduling: probe interval / next bounded cycle
-    Scheduling --> Listening: next probe sent
-    Listening --> Stopping: cancellation / final bounded window
-    Listening --> Failed: read/handler error
-    Stopping --> Closed: writer joined, listener closed
-    Closed --> Completed
+    Receiving --> Receiving: accepted response or ignored duplicate
+    Receiving --> AwaitingPostCondition: command response accepted
+    Receiving --> Stopping: cancellation / deadline
+    AwaitingPostCondition --> Verified: expected state observed
+    AwaitingPostCondition --> Failed: timeout/contradictory state
+    Stopping --> Closed: writers joined, connections closed
+    Verified --> Closed
     Failed --> Closed: cleanup attempted
+    Closed --> Completed
     Completed --> [*]
-    Failed --> [*]
 ```
 
 Нормальное завершение возвращает `nil` только после остановки writer и
-закрытия connection. При ошибке listener во время записи coordinator сохраняет
-обе причины; ошибки классифицируются typed errors, а не анализом текста.
+закрытия connection. При ошибке listener во время записи сохраняются обе
+причины; ошибки классифицируются typed errors, а не анализом текста.
 
-## 6. Сквозная симуляция одного bounded discovery цикла
+## 10. Наблюдаемость и безопасность
 
-Пример использует условные данные и не содержит реальных credentials.
+Разрешённый диагностический минимум: тип операции, UUID, MAC, интерфейс,
+наблюдаемый sender, старый/новый IP, DHCP-состояние, result code, duration и
+стадия ошибки.
 
-| Время | Инициатор | Действие | Передаваемая информация | Результат |
-|---:|---|---|---|---|
-| t0 | UI | Разбор команды | `interface=4`, `timeout=5s`, `repeat=1` | Typed command |
-| t1 | M7/M8 | Подготовка runtime | `maxDatagramSize=1500`, group/port/TTL | `DiscoveryOptions` |
-| t2 | M6 → M0 | Открытие сокета | interface index/name + multicast options | `PacketConn` |
-| t3 | M6 → M1 | Первый probe | XML `<Probe>` с UUID, `Types=inquiry`, `ResponseMode=2` | UDP write |
-| t4 | Device → M1 | Ответ | bytes, sender `192.0.2.10:37020` | datagram accepted |
-| t5 | M1 → M2 | Парсинг | payload + limit 1500 | `Device{MAC, IPv4Address, ...}` |
-| t6 | M2 → M6 → UI | Событие | `DeviceFound`, sender, timestamp | строка/JSON устройства |
-| t7 | M6 | Ожидание | bounded receive window до 5 секунд | новые события или timeout |
-| t8 | UI → M6 | Отмена/окончание | `context.Cancel()` либо final cycle | stop scheduling |
-| t9 | M6 → M1 | Cleanup | join writer, cancel listener | close connection |
-| t10 | M6 → UI | Завершение | partial results + typed error, если есть | exit code `0`/`1` |
+Нельзя журналировать или включать в результат пароль, `Password` и его
+ciphertext, challenge plaintext, RSA private key, AES-ключ, `Salt`, `Code`,
+ответы на контрольные вопросы и полный XML с чувствительными полями.
 
-## 7. Наблюдаемость и безопасность
-
-- В журнал попадают только безопасные атрибуты: стадия, тип ошибки, размер
-  датаграммы, интерфейс, sender/target, count и duration.
-- Не журналируются пароли, challenge, hash, полные XML/JSON и содержимое
-  сетевых payload.
-- `context.Context` владеет отменой; переданный в `Listen` connection закрывает
-  сам listener. Не допускаются бесконечные retry и goroutine per datagram.
-- Ошибка конфигурации, bind/write/read/parse/handler и cancellation различаются
-  через typed errors и `errors.Is`/`errors.As`.
-- Presentation не меняет режим во время процесса: TUI, REPL и one-shot выбираются
-  один раз при запуске.
-
+`context.Context` владеет отменой. Не допускаются бесконечные retry,
+goroutine per datagram и success-shaped fallback. Ошибки configuration,
+bind/write/read/parse/handler, authorization, compatibility и cancellation
+различаются через typed errors и `errors.Is`/`errors.As`.
