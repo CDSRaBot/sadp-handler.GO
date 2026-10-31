@@ -220,6 +220,25 @@
 
 ## Политика ошибок и безопасности
 
+### Error contract principles
+
+- Every error is handled explicitly; no returned error, cleanup error, or
+  logging-handler error may be silently discarded.
+- Each package owns its typed internal errors. Low-level packages may add
+  context with `%w`, but must not depend on the application-facing public
+  failure-code dictionary.
+- `internal/fault` is the single public error-code dictionary and classifier at
+  the application boundary. UI, CLI, JSON, and other external consumers use
+  stable codes instead of parsing error strings.
+- Public `code` and safe `message` are presentation data. The original Go
+  error must still be returned and remain inspectable through `errors.Is` and
+  `errors.As`.
+- Use `errors.Is` for sentinel/context errors and `errors.As` for typed
+  package errors. Preserve `context.Canceled` and
+  `context.DeadlineExceeded` when adding cancellation or timeout context.
+- Use `errors.Join` when both an operation and its cleanup fail. Never replace
+  the primary cause with a generic success-shaped or presentation-only error.
+
 - Все ошибки должны быть явными и доступными для проверки.
 - Не использовать `panic` в рабочем коде, за исключением `main` и чётко ограниченных сценариев.
 - Сетевые запросы должны иметь тайм-ауты.

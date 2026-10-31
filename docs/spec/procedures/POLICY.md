@@ -38,6 +38,18 @@ The normative specification order is:
 - Return explicit, inspectable errors. Preserve an underlying cause when the
   caller needs to classify it with `errors.Is` or `errors.As`; never use an
   error string as a programmatic contract.
+- Keep error ownership local to the package that detects the failure. Add
+  package-specific context with `%w`, but do not make a low-level package
+  depend on the application-facing public-code dictionary.
+- Classify errors into stable public codes only at the application boundary.
+  The boundary returns the safe public `code` and `message` separately from
+  the original Go error; adapting the presentation must not break its
+  `Unwrap` chain.
+- Use `errors.Is` for sentinel and context errors and `errors.As` for typed
+  package errors. Preserve `context.Canceled` and
+  `context.DeadlineExceeded` when adding a timeout or cancellation category.
+- Preserve simultaneous operation and cleanup failures with `errors.Join`.
+  Do not discard cleanup, close, or logging-handler errors.
 - Do not use `panic` for ordinary invalid input, I/O, network, parsing, or
   device-operation failures.
 - A failure returns no partially usable result unless the specific procedure

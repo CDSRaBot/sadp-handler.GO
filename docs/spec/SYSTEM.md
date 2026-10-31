@@ -154,6 +154,25 @@ operation-specific additions or stricter rules.
 ## 6. Error Handling, Security, and Resource Policy
 
 - Return and handle errors explicitly. Do not ignore errors or use `panic` in production workflows.
+- Each package owns its internal typed errors and may add package-specific
+  context. Package-local errors must not depend on the application-facing
+  failure-code package.
+- The application boundary is the single place where internal errors are
+  classified into the stable public failure-code dictionary. The public
+  contract is defined by `internal/fault`; UI, CLI, JSON, and other external
+  consumers must use those codes rather than parsing error text.
+- Adapting an internal error to a public code must not replace the returned
+  error or break its chain. The public `code` and safe `message` are
+  presentation data; the Go error remains available for `errors.Is` and
+  `errors.As`.
+- Add context with `%w` and preserve the original cause through `Unwrap`.
+  Use `errors.Is` for sentinel/context errors and `errors.As` for typed
+  errors. Never use string matching as a classification mechanism.
+- When a primary operation and cleanup both fail, retain both causes with
+  `errors.Join`. Cleanup and logging-handler errors must not be discarded.
+- Use `context.Canceled` and `context.DeadlineExceeded` consistently across
+  layers; classification may add a public code but must preserve the context
+  cause.
 - Apply timeouts or cancellation to network operations and bound input sizes, concurrency, and other resource consumption.
 - Treat network data, CLI input, and configuration as untrusted. Validate addresses, ports, device fields, passwords, and protocol values before use.
 - All baseline runtime settings are read from `settings.json` through M7 and
