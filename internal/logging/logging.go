@@ -74,8 +74,15 @@ func New(config Config) (*slog.Logger, *Handle, error) {
 		now:       config.Now,
 	}
 	if err := handler.writeHeader(); err != nil {
-		_ = file.Close()
-		return nil, nil, fmt.Errorf("write logging header: %w", err)
+		return nil, nil, errors.Join(
+			fmt.Errorf("write logging header: %w", err),
+			func() error {
+				if closeErr := file.Close(); closeErr != nil {
+					return fmt.Errorf("close log file: %w", closeErr)
+				}
+				return nil
+			}(),
+		)
 	}
 	return slog.New(handler), &Handle{handler: handler}, nil
 }

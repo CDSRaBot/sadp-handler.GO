@@ -219,8 +219,18 @@ func openMulticast(iface Interface, options MulticastOptions) (net.PacketConn, e
 		return nil, err
 	}
 	if err := ipv4.NewPacketConn(connection).SetMulticastTTL(options.TTL); err != nil {
-		_ = connection.Close()
-		return nil, fmt.Errorf("set multicast TTL: %w", err)
+		return nil, &AdapterError{
+			Kind: AdapterBindFailed,
+			Err: errors.Join(
+				fmt.Errorf("set multicast TTL: %w", err),
+				func() error {
+					if closeErr := connection.Close(); closeErr != nil {
+						return fmt.Errorf("close multicast connection: %w", closeErr)
+					}
+					return nil
+				}(),
+			),
+		}
 	}
 	return connection, nil
 }

@@ -98,7 +98,19 @@ func (s *m6DiscoverySession) Errors() <-chan error {
 func (s *m6DiscoverySession) run(ctx context.Context, discover func(context.Context, adapter.Interface, discovery.DiscoveryOptions, discovery.EventHandler) error, iface adapter.Interface, options discovery.DiscoveryOptions) {
 	defer close(s.events)
 	defer close(s.errs)
+	var rejectedErr error
+	rejectedCount := 0
 	handle := func(eventCtx context.Context, event discovery.Event) error {
+		if event.Kind == discovery.DatagramRejected {
+			if event.Err == nil {
+				event.Err = errors.New("discovery datagram was rejected without a cause")
+			}
+			rejectedCount++
+			if rejectedErr == nil {
+				rejectedErr = event.Err
+			}
+			return nil
+		}
 		if event.Kind != discovery.DeviceFound || event.Device == nil {
 			return nil
 		}
@@ -115,8 +127,15 @@ func (s *m6DiscoverySession) run(ctx context.Context, discover func(context.Cont
 			return ctx.Err()
 		}
 	}
-	if err := discover(ctx, iface, options, handle); err != nil && !errors.Is(err, context.Canceled) {
-		s.errs <- err
+	discoverErr := discover(ctx, iface, options, handle)
+	if rejectedErr != nil {
+		rejectedErr = fmt.Errorf("discovery rejected %d datagram(s): %w", rejectedCount, rejectedErr)
+	}
+	if discoverErr != nil && !errors.Is(discoverErr, context.Canceled) {
+		rejectedErr = errors.Join(rejectedErr, discoverErr)
+	}
+	if rejectedErr != nil {
+		s.errs <- rejectedErr
 	}
 }
 

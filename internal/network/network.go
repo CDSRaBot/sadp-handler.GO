@@ -209,7 +209,7 @@ func validateSendArguments(ctx context.Context, conn net.PacketConn, target net.
 	return nil
 }
 
-func writeDatagram(ctx context.Context, conn net.PacketConn, target net.Addr, payload []byte) error {
+func writeDatagram(ctx context.Context, conn net.PacketConn, target net.Addr, payload []byte) (result error) {
 	if err := ctx.Err(); err != nil {
 		return &TransportError{Stage: TransportValidation, Err: err}
 	}
@@ -217,7 +217,15 @@ func writeDatagram(ctx context.Context, conn net.PacketConn, target net.Addr, pa
 		if err := conn.SetWriteDeadline(deadline); err != nil {
 			return &TransportError{Stage: TransportWrite, Err: err}
 		}
-		defer func() { _ = conn.SetWriteDeadline(time.Time{}) }()
+		defer func() {
+			if err := conn.SetWriteDeadline(time.Time{}); err != nil {
+				result = joinTransportError(
+					TransportWrite,
+					result,
+					fmt.Errorf("reset write deadline: %w", err),
+				)
+			}
+		}()
 	}
 	n, err := conn.WriteTo(payload, target)
 	if err != nil {

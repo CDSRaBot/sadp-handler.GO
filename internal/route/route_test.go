@@ -337,6 +337,19 @@ func TestSelectorPreservesCancellation(t *testing.T) {
 	}
 }
 
+func TestSelectorRejectsNilContext(t *testing.T) {
+	selector, err := NewSelector(StrategySADPFirst, Dependencies{SADP: &fakeTransport{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = selector.Execute(nil, OperationDiscovery, testTarget())
+	var routeErr *Error
+	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorInvalidInput {
+		t.Fatalf("expected invalid-input error, got %v", err)
+	}
+}
+
 func TestBuildISAPIActivationPasswordUsesSDKSecurityPipeline(t *testing.T) {
 	material, err := NewActivationSecurityMaterial("SyntheticPassword1!")
 	if err != nil {

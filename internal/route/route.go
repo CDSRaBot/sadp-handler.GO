@@ -53,7 +53,12 @@ type Error struct {
 	Err  error
 }
 
-func (e *Error) Error() string { return string(e.Kind) }
+func (e *Error) Error() string {
+	if e == nil {
+		return ""
+	}
+	return string(e.Kind)
+}
 func (e *Error) Unwrap() error { return e.Err }
 
 type FallbackDecision string
@@ -134,6 +139,10 @@ func NewSelector(strategy Strategy, dependencies Dependencies) (*Selector, error
 func (s *Selector) Execute(ctx context.Context, operation Operation, target Target) (Result, error) {
 	if !isKnownOperation(operation) {
 		return Result{Operation: operation, Target: target}, &Error{Kind: ErrorInvalidInput, Err: fmt.Errorf("unknown operation %q", operation)}
+	}
+	if ctx == nil {
+		return Result{Operation: operation, Target: target},
+			&Error{Kind: ErrorInvalidInput, Err: errors.New("context is nil")}
 	}
 	if err := ctx.Err(); err != nil {
 		return Result{Operation: operation, Target: target}, contextError(err)

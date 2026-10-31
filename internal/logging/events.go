@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 )
 
 func Event(logger *slog.Logger, level slog.Level, name string, attrs ...slog.Attr) error {
@@ -13,6 +14,11 @@ func Event(logger *slog.Logger, level slog.Level, name string, attrs ...slog.Att
 	if name == "" {
 		return errors.New("log event name is empty")
 	}
-	logger.LogAttrs(context.Background(), level, name, attrs...)
-	return nil
+	handler := logger.Handler()
+	if !handler.Enabled(context.Background(), level) {
+		return nil
+	}
+	record := slog.NewRecord(time.Now(), level, name, 0)
+	record.AddAttrs(attrs...)
+	return handler.Handle(context.Background(), record)
 }

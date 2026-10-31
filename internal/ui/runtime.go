@@ -144,7 +144,7 @@ func runCLI(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 	}
 	if mode == ModeTUI {
 		if err := RunTUI(ctx, dependencies); err != nil {
-			writeDiagnostic(stderr, "TUI failed")
+			writeDiagnostic(stderr, fmt.Errorf("TUI failed: %w", err).Error())
 			return ExitOperational
 		}
 		return ExitSuccess

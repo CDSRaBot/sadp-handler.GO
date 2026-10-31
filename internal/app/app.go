@@ -33,8 +33,16 @@ func Initialize(settings config.Settings, directory string) (Dependencies, error
 		logging.SafeAttr("component", "M8"),
 		logging.SafeAttr("level", settings.Logging.Level),
 	); err != nil {
-		_ = logFile.Close()
-		return Dependencies{}, fmt.Errorf("log application initialization: %w", err)
+		closeErr := logFile.Close()
+		return Dependencies{}, errors.Join(
+			fmt.Errorf("log application initialization: %w", err),
+			func() error {
+				if closeErr == nil {
+					return nil
+				}
+				return fmt.Errorf("close application log: %w", closeErr)
+			}(),
+		)
 	}
 	return Dependencies{Settings: settings, Logger: logger, LogFile: logFile}, nil
 }

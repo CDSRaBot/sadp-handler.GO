@@ -116,16 +116,34 @@ func (t SADPMutationTransport) Exchange(ctx context.Context, target logic.Mutati
 func classifyMutationTransportError(ctx context.Context, stage TransportStage, err error) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		if errors.Is(ctxErr, context.DeadlineExceeded) {
-			return &TransportError{Stage: TransportTimeout, Err: ctxErr}
+			return &TransportError{
+				Stage: TransportTimeout,
+				Err:   fmt.Errorf("mutation exchange deadline exceeded: %w", ctxErr),
+			}
 		}
-		return &TransportError{Stage: TransportCanceled, Err: ctxErr}
+		return &TransportError{
+			Stage: TransportCanceled,
+			Err:   fmt.Errorf("mutation exchange canceled: %w", ctxErr),
+		}
 	}
 	if errors.Is(err, net.ErrClosed) {
-		return &TransportError{Stage: stage, Err: errors.New("mutation socket closed")}
+		return &TransportError{
+			Stage: stage,
+			Err:   fmt.Errorf("mutation socket closed: %w", err),
+		}
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
-		return &TransportError{Stage: TransportTimeout, Err: context.DeadlineExceeded}
+		return &TransportError{
+			Stage: TransportTimeout,
+			Err: fmt.Errorf(
+				"mutation socket timeout: %w",
+				errors.Join(context.DeadlineExceeded, err),
+			),
+		}
 	}
-	return &TransportError{Stage: stage, Err: errors.New("mutation socket I/O failed")}
+	return &TransportError{
+		Stage: stage,
+		Err:   fmt.Errorf("mutation socket I/O failed: %w", err),
+	}
 }

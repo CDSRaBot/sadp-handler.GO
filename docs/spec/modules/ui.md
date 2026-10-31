@@ -21,6 +21,11 @@ Provide the user-facing command-line entry point and connect validated user requ
 - Invoke application workflows with a cancellable `context.Context`.
 - Present device data and operation outcomes, including errors and partial results, in a form suitable for both interactive use and automation.
 - Return documented process exit codes for success, invalid input, and operational failure.
+- Preserve the original cause when adapting service errors to command results. The
+  stable `code` and `message` fields are presentation data; the returned Go
+  `error` remains wrapped for `errors.Is`/`errors.As` inspection. Discovery
+  datagram rejections are reported through the session error channel without
+  stopping the session.
 
 The CLI must not perform socket setup, parse SADP XML, or construct device protocol payloads directly.
 

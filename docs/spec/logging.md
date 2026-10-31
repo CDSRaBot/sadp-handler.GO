@@ -70,6 +70,11 @@ attributes:
 Errors are recorded with a classified kind and stage. Error strings must not
 be used as a substitute for stable fields.
 
+The logging boundary must not discard handler or file errors. `logging.Event`
+returns a handler failure to its caller; initialization and cleanup failures
+are combined with `errors.Join` when both occur. Callers must either return
+that error with context or handle it at the final application boundary.
+
 ## 4. Redaction and ownership
 
 The following must never be logged: passwords, password-derived values,

@@ -113,7 +113,7 @@ func (m TUIModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.resize()
 	case tuiCommandResultMsg:
 		if message.err != nil {
-			m.status = "command failed"
+			m.status = fmt.Sprintf("command failed: %v", message.err)
 		} else if message.result.Error != nil {
 			m.status = message.result.Error.Message
 		} else {
@@ -122,14 +122,14 @@ func (m TUIModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.details.SetContent(m.status)
 	case tuiDiscoverySessionMsg:
 		if message.err != nil {
-			m.status = "discovery failed to start"
+			m.status = fmt.Sprintf("discovery failed to start: %v", message.err)
 			return m, nil
 		}
 		m.session = message.session
 		return m, m.waitForDiscoveryEvent()
 	case tuiInterfacesMsg:
 		if message.err != nil {
-			m.status = "interface enumeration failed"
+			m.status = fmt.Sprintf("interface enumeration failed: %v", message.err)
 			return m, nil
 		}
 		m.SetAvailableInterfaces(message.interfaces)
@@ -144,7 +144,7 @@ func (m TUIModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.startDiscovery()
 	case tuiDiscoveryEventMsg:
 		if message.err != nil {
-			m.status = "discovery failed"
+			m.status = fmt.Sprintf("discovery failed: %v", message.err)
 			return m, nil
 		}
 		if message.done {
@@ -421,7 +421,10 @@ func (m *TUIModel) nextZone() {
 	if zone > TUIZoneConsole {
 		zone = TUIZoneDevices
 	}
-	_ = m.state.SetZone(zone)
+	if err := m.state.SetZone(zone); err != nil {
+		m.status = fmt.Sprintf("change zone failed: %v", err)
+		return
+	}
 	m.updateFocus()
 }
 
@@ -430,7 +433,10 @@ func (m *TUIModel) previousZone() {
 	if zone < TUIZoneDevices {
 		zone = TUIZoneConsole
 	}
-	_ = m.state.SetZone(zone)
+	if err := m.state.SetZone(zone); err != nil {
+		m.status = fmt.Sprintf("change zone failed: %v", err)
+		return
+	}
 	m.updateFocus()
 }
 

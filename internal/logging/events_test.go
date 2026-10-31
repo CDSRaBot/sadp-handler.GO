@@ -2,6 +2,7 @@ package logging
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
@@ -75,9 +76,27 @@ func TestEventRejectsInvalidLoggerOrName(t *testing.T) {
 	}
 }
 
+func TestEventReturnsHandlerError(t *testing.T) {
+	expected := errors.New("log write failed")
+	logger := slog.New(errorHandler{err: expected})
+
+	if err := Event(logger, slog.LevelError, "event"); !errors.Is(err, expected) {
+		t.Fatalf("Event() error = %v, want handler error", err)
+	}
+}
+
 type recordingHandler struct {
 	record slog.Record
 }
+
+type errorHandler struct {
+	err error
+}
+
+func (h errorHandler) Enabled(context.Context, slog.Level) bool  { return true }
+func (h errorHandler) Handle(context.Context, slog.Record) error { return h.err }
+func (h errorHandler) WithAttrs([]slog.Attr) slog.Handler        { return h }
+func (h errorHandler) WithGroup(string) slog.Handler             { return h }
 
 func (h *recordingHandler) Enabled(context.Context, slog.Level) bool { return true }
 func (h *recordingHandler) Handle(_ context.Context, record slog.Record) error {

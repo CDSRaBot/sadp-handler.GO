@@ -115,3 +115,15 @@ func TestSADPMutationTransportPreservesCloseFailure(t *testing.T) {
 		t.Fatalf("Exchange() error = %v, want close failure", err)
 	}
 }
+
+func TestClassifyMutationTransportErrorPreservesIOCause(t *testing.T) {
+	cause := errors.New("write failed")
+	err := classifyMutationTransportError(context.Background(), TransportWrite, cause)
+
+	if !errors.Is(err, cause) {
+		t.Fatalf("classified error = %v, want original cause", err)
+	}
+	if got := err.Error(); got != "write: mutation socket I/O failed: write failed" {
+		t.Fatalf("classified error = %q, want contextual message", got)
+	}
+}
