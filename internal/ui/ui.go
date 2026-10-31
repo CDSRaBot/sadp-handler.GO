@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/CDSRaBot/sadp-handler.GO/internal/adapter"
+	"github.com/CDSRaBot/sadp-handler.GO/internal/fault"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/i18n"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/logic"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/parser"
@@ -114,15 +115,15 @@ type DeviceOutcome struct {
 }
 
 type CommandFailure struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    fault.Code `json:"code"`
+	Message string     `json:"message"`
 }
 
 const (
-	FailureInvalidArgument = "invalid_argument"
-	FailureUnsupported     = "unsupported"
-	FailureOperationFailed = "operation_failed"
-	FailureCanceled        = "canceled"
+	FailureInvalidArgument = fault.InvalidArgument
+	FailureUnsupported     = fault.Unsupported
+	FailureOperationFailed = fault.OperationFailed
+	FailureCanceled        = fault.Canceled
 )
 
 type DiscoveryService interface {
@@ -349,19 +350,15 @@ func validateMutationCommand(targets TargetSelector, password PasswordSource, co
 
 func dispatchMutationResult(ctx context.Context, command string, targets TargetSelector, outcomes []DeviceOutcome, err error) (CommandResult, error) {
 	if err != nil {
-		if isCancellation(err) {
-			return mutationFailure(command, FailureCanceled, "command canceled", outcomes, err)
+		code := fault.Classify(err)
+		message := command + " operation failed"
+		switch code {
+		case fault.InvalidArgument:
+			message = "invalid device operation"
+		case fault.Canceled, fault.Timeout:
+			message = "command canceled"
 		}
-		var operationErr *logic.DeviceOperationError
-		if errors.As(err, &operationErr) {
-			switch operationErr.Kind {
-			case logic.OperationInvalidInput:
-				return mutationFailure(command, FailureInvalidArgument, "invalid device operation", outcomes, err)
-			case logic.OperationCanceled:
-				return mutationFailure(command, FailureCanceled, "command canceled", outcomes, err)
-			}
-		}
-		return mutationFailure(command, FailureOperationFailed, command+" operation failed", outcomes, err)
+		return mutationFailure(command, code, message, outcomes, err)
 	}
 	if len(outcomes) == 0 && len(targets.MACs) > 0 {
 		return mutationFailure(command, FailureOperationFailed, "mutation service returned no device outcomes", outcomes, errors.New("mutation service returned no device outcomes"))
@@ -369,7 +366,7 @@ func dispatchMutationResult(ctx context.Context, command string, targets TargetS
 	return CommandResult{Command: command, OK: true, Devices: outcomes}, nil
 }
 
-func mutationFailure(command, code, message string, outcomes []DeviceOutcome, cause error) (CommandResult, error) {
+func mutationFailure(command string, code fault.Code, message string, outcomes []DeviceOutcome, cause error) (CommandResult, error) {
 	result, err := dispatchFailure(command, code, message, cause)
 	result.Devices = outcomes
 	return result, err
@@ -412,7 +409,7 @@ func dispatchUnsupported(command string) (CommandResult, error) {
 	return dispatchFailure(command, FailureUnsupported, command+" workflow is not implemented", errors.New("workflow is not implemented"))
 }
 
-func dispatchFailure(command, code, message string, cause error) (CommandResult, error) {
+func dispatchFailure(command string, code fault.Code, message string, cause error) (CommandResult, error) {
 	result := CommandResult{
 		Command: command,
 		OK:      false,

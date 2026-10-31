@@ -26,6 +26,9 @@ Provide the user-facing command-line entry point and connect validated user requ
   `error` remains wrapped for `errors.Is`/`errors.As` inspection. Discovery
   datagram rejections are reported through the session error channel without
   stopping the session.
+- Public failure codes and their classification rules are centralized in
+  `internal/fault`. Internal packages retain their own typed errors and do not
+  depend on the public code contract.
 
 The CLI must not perform socket setup, parse SADP XML, or construct device protocol payloads directly.
 
