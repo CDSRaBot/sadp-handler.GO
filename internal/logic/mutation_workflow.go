@@ -20,6 +20,7 @@ const (
 type MutationTarget struct {
 	MAC    net.HardwareAddr
 	Sender net.Addr
+	UUID   string
 }
 
 type MutationExchange struct {
@@ -44,6 +45,10 @@ type Challenge struct {
 
 type ChallengeProvider interface {
 	Acquire(context.Context, MutationTarget) (Challenge, error)
+}
+
+type NetworkPostConditionVerifier interface {
+	VerifyNetwork(context.Context, MutationTarget, NetworkConfig) error
 }
 
 type MutationDecisionStatus string
@@ -74,6 +79,7 @@ type MutationOutcome struct {
 type MutationWorkflow struct {
 	Transport         MutationTransport
 	ChallengeProvider ChallengeProvider
+	NetworkVerifier   NetworkPostConditionVerifier
 	Parser            ResponseParser
 	MaxResponseSize   int
 }
@@ -118,7 +124,20 @@ func (w MutationWorkflow) ConfigureNetwork(ctx context.Context, target MutationT
 	if err != nil {
 		return MutationDecision{}, operationError(OperationInvalidInput, err)
 	}
-	return w.exchangeAndParse(ctx, MutationNetwork, target, payload)
+	decision, err := w.exchangeAndParse(ctx, MutationNetwork, target, payload)
+	if err != nil {
+		return MutationDecision{}, err
+	}
+	if decision.Status != MutationAccepted {
+		return decision, nil
+	}
+	if w.NetworkVerifier == nil {
+		return MutationDecision{}, operationError(OperationMissingData, errors.New("network post-condition verifier is required"))
+	}
+	if err := w.NetworkVerifier.VerifyNetwork(ctx, target, config); err != nil {
+		return MutationDecision{}, normalizeMutationError(err, OperationCorrelation)
+	}
+	return decision, nil
 }
 
 func (w MutationWorkflow) ConfigureSecurityQuestions(ctx context.Context, target MutationTarget, questions []SecurityQuestion) (MutationDecision, error) {
@@ -158,10 +177,16 @@ func (w MutationWorkflow) ConfigureNetworkMany(ctx context.Context, targets []Mu
 func (w MutationWorkflow) exchangeAndParse(ctx context.Context, operation MutationOperation, target MutationTarget, payload []byte) (MutationDecision, error) {
 	var matched MutationDecision
 	var matchedOK bool
+	var sawCandidate bool
 	var exchange MutationExchange
 	var err error
 	if transport, ok := w.Transport.(MatchingMutationTransport); ok {
 		exchange, err = transport.ExchangeMatching(ctx, target, payload, func(candidate MutationExchange) bool {
+			sawCandidate = true
+			identity, identityErr := ParseMutationResponseIdentity(candidate.Data)
+			if identityErr != nil || !identityMatches(operation, target, identity) {
+				return false
+			}
 			decision, parseErr := w.Parser.Parse(operation, target, candidate.Sender, candidate.Data)
 			if parseErr != nil || !validMutationDecision(operation, target, decision) {
 				return false
@@ -174,6 +199,9 @@ func (w MutationWorkflow) exchangeAndParse(ctx context.Context, operation Mutati
 		exchange, err = w.Transport.Exchange(ctx, target, payload)
 	}
 	if err != nil {
+		if sawCandidate && errors.Is(err, context.DeadlineExceeded) {
+			return MutationDecision{}, operationError(OperationCorrelation, errors.New("mutation responses did not match the requested operation"))
+		}
 		return MutationDecision{}, normalizeMutationError(err, OperationTransport)
 	}
 	if exchange.Sender == nil || len(exchange.Data) == 0 {

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ProbeMatch>
+  <Uuid>urn:uuid:foreign</Uuid>
+  <Types>update</Types>
+  <MAC>aa-bb-cc-dd-ee-ff</MAC>
+  <Result>success</Result>
+</ProbeMatch>

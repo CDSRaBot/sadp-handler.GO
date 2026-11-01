@@ -80,6 +80,7 @@ func TestWorkflowNetworkServicePreservesPartialResolutionFailure(t *testing.T) {
 		Passwords: servicePasswordProvider{password: "ValidPass1!"},
 		Workflow: logic.MutationWorkflow{
 			ChallengeProvider: serviceChallengeProvider{target: serviceTarget(first)},
+			NetworkVerifier:   serviceNetworkVerifier{},
 			Transport:         serviceTransport{},
 			Parser: serviceParser{parse: func(operation logic.MutationOperation, target logic.MutationTarget, _ net.Addr, _ []byte) (logic.MutationDecision, error) {
 				return logic.MutationDecision{Operation: operation, Target: target, Status: logic.MutationAccepted}, nil
@@ -99,6 +100,12 @@ func TestWorkflowNetworkServicePreservesPartialResolutionFailure(t *testing.T) {
 	if outcomes[0].Status != "accepted" || outcomes[1].Status != "failed" {
 		t.Fatalf("outcomes = %#v", outcomes)
 	}
+}
+
+type serviceNetworkVerifier struct{}
+
+func (serviceNetworkVerifier) VerifyNetwork(context.Context, logic.MutationTarget, logic.NetworkConfig) error {
+	return nil
 }
 
 type serviceTransport struct{}

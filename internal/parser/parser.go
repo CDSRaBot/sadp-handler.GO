@@ -351,9 +351,9 @@ func assignField(fields *advertisementFields, name, value string) {
 	case "IPv4Address":
 		fields.ipv4 = value
 		fields.ipv4Present = true
-	case "SubnetMask":
+	case "SubnetMask", "IPv4SubnetMask":
 		fields.ipv4Mask = value
-	case "DefaultGateway":
+	case "DefaultGateway", "IPv4Gateway":
 		fields.ipv4Gateway = value
 	case "DHCP":
 		fields.dhcpPresent = true

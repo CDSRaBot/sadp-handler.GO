@@ -64,13 +64,15 @@ hashes.
 1. Validate the target, payload, limit, and context.
 2. Establish the documented deadline and ownership.
 3. Send one datagram.
-4. In operation-aware mode, read until the operation/MAC/UUID matcher accepts
-   a response or the shared deadline expires; discard unrelated datagrams. In
-   compatibility mode, return the first non-empty bounded response while
-   preserving its sender.
-5. Return the response to M3 for challenge extraction or mutation-result
-   parsing.
-6. Close owned resources and return any cleanup failure according to the
+4. For SADP mutations, use an operation-aware matcher: read until `Types`, MAC,
+   and the expected UUID (when supplied) match or the shared deadline expires;
+   discard unrelated datagrams. Sender IP is not device identity and may
+   change, including loopback duplicates. Legacy `Exchange` is retained only
+   for test/old transports.
+5. Return the correlated response to M3 for mutation-result parsing.
+6. For network changes, perform a separate `inquiry` and accept success only
+   after verifying final MAC, DHCP, and network state.
+7. Close owned resources and return any cleanup failure according to the
    transport error contract.
 
 The response sender is deliberately not required to match the target here.
