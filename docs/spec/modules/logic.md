@@ -27,10 +27,13 @@ SADP wire fixture. P3.1 defines the raw SADP request shape, with its
 Python-derived optional fields retained as compatibility requirements pending
 end-to-end activation outcome testing. Activation passwords are restricted
 to ASCII letters, ASCII digits, and printable ASCII special characters;
-spaces and all non-ASCII characters are rejected. For network configuration,
-the SHA-256 calculation over UTF-8 `password + challenge` is confirmed by
-practical experiments and is normative. Target MAC text is uppercase,
-colon-separated EUI-48.
+spaces and all non-ASCII characters are rejected. For network configuration, the SHA-256 calculation over UTF-8
+`password + challenge` is confirmed by practical experiments for the
+explicitly selected legacy wire profile; it is not a universal contract for
+`Password bSalt="true"`. Target MAC text is uppercase, colon-separated
+EUI-48. The SDK `<Probe>` shape with `bSalt="true"` is confirmed, but its
+algorithm, KDF, key, IV, padding, and relationship to `Salt` are unconfirmed;
+until a reproducible wire vector exists, that profile must fail closed.
 
 M3 supplies operation semantics to M9. SADP remains the default activation and
 network-configuration route; ISAPI is selected explicitly or after an eligible

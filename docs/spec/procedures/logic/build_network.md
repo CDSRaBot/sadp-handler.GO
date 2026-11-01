@@ -26,7 +26,7 @@ func BuildNetworkXML(
 ## 3. Processing Requirements
 
 1. Validate the target MAC as EUI-48 and apply the M3 network-configuration rules. For DHCP, static address and gateway fields must be unset; for static configuration, the address and mandatory gateway must be valid IPv4 values.
-2. Require a non-empty challenge and calculate the response with P3.5 `CalculateHash`, using SHA-256 over UTF-8 `password + challenge` and lowercase hexadecimal output.
+2. For the explicitly selected legacy wire profile, require a non-empty challenge and calculate the response with P3.5 `CalculateHash`, using SHA-256 over UTF-8 `password + challenge` and lowercase hexadecimal output. Do not silently apply this rule to the salted-password profile.
 3. Match the local Python reference's current `<NetworkParameter>` XML shape using `encoding/xml`:
    - `<TargetMAC>`: uppercase, colon-separated EUI-48 text for the Python-reference compatibility fixture. This casing is not an independently verified wire-protocol requirement.
    - `<DHCP>`: lowercase `true` or `false`.
@@ -35,7 +35,7 @@ func BuildNetworkXML(
 4. Serialize with `encoding/xml`; prepend `xml.Header` because the encoder does not add a declaration automatically. Do not build XML by string formatting.
 5. Keep the result as a payload for transport integration; this procedure does not perform network I/O. M1 P1.4 can send the SADP datagram, but this builder does not acquire the challenge or interpret the device's network-update result. Do not describe this builder alone as a completed network-configuration operation.
 
-The request shape and challenge-response calculation are accepted based on practical experiments. Go must not copy the Python reference's missing-challenge fallback, which emits `<Password>` in plaintext.
+The legacy request shape and challenge-response calculation are accepted based on practical experiments. The SDK `<Probe>` form with `<Password bSalt="true">` is a separate wire profile; until an approved vector exists, its encoder is unavailable and the operation fails. Go must not copy the Python reference's missing-challenge fallback, which emits `<Password>` in plaintext.
 
 ## 4. Errors and Tests
 
