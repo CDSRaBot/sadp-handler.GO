@@ -125,7 +125,47 @@ func TestISAPICapabilityLookupHonorsCancellation(t *testing.T) {
 	defer cancel()
 	_, err := transport.LookupCapabilities(ctx, testTarget())
 	var routeErr *Error
-	if !errors.As(err, &routeErr) || (routeErr.Kind != ErrorCanceled && routeErr.Kind != ErrorTimeout) {
-		t.Fatalf("expected bounded cancellation, got %v", err)
+	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorTimeout {
+		t.Fatalf("expected bounded timeout, got %v", err)
+	}
+}
+
+func TestISAPIRequestClassifiesAuthenticationAndRejection(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		statusCode int
+		want       ErrorKind
+	}{
+		{name: "unauthorized", statusCode: http.StatusUnauthorized, want: ErrorAuthentication},
+		{name: "forbidden", statusCode: http.StatusForbidden, want: ErrorAuthentication},
+		{name: "bad request", statusCode: http.StatusBadRequest, want: ErrorRejected},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.WriteHeader(testCase.statusCode)
+			}))
+			defer server.Close()
+			transport := &ISAPIHTTPTransport{BaseURL: server.URL}
+
+			_, err := transport.LookupCapabilities(context.Background(), testTarget())
+			var routeErr *Error
+			if !errors.As(err, &routeErr) || routeErr.Kind != testCase.want {
+				t.Fatalf("LookupCapabilities() error = %v, want %s", err, testCase.want)
+			}
+		})
+	}
+}
+
+func TestISAPIRequestRejectsOversizedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte("<Capabilities><Status>true</Status></Capabilities>"))
+	}))
+	defer server.Close()
+	transport := &ISAPIHTTPTransport{BaseURL: server.URL, MaxResponseBytes: 8}
+
+	_, err := transport.LookupCapabilities(context.Background(), testTarget())
+	var routeErr *Error
+	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorMalformed {
+		t.Fatalf("LookupCapabilities() error = %v, want malformed response", err)
 	}
 }

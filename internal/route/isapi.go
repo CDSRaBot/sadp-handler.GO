@@ -232,8 +232,11 @@ func (t *ISAPIHTTPTransport) request(ctx context.Context, method string, endpoin
 	response, err := client.Do(request)
 	if err != nil {
 		kind := ErrorTimeout
-		if ctx.Err() != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
 			kind = ErrorCanceled
+			err = ctx.Err()
+		} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			kind = ErrorTimeout
 			err = ctx.Err()
 		}
 		return nil, &Error{Kind: kind, Err: err}
