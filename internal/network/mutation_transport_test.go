@@ -67,6 +67,23 @@ func TestSADPMutationTransportRejectsOversizedPayloadAndResponse(t *testing.T) {
 	assertTransportStage(t, err, TransportResponseTooLarge)
 }
 
+func TestSADPMutationTransportRejectsUnassignedDestinationBeforeOpeningSocket(t *testing.T) {
+	conn := &recordingPacketConn{}
+	transport := SADPMutationTransport{
+		MaxDatagramSize: 64,
+		Open:            func() (net.PacketConn, error) { return conn, nil },
+	}
+	target := mutationTransportTarget()
+	target.Sender = &net.UDPAddr{IP: net.IPv4zero, Port: 37020}
+
+	_, err := transport.Exchange(context.Background(), target, []byte("payload"))
+
+	assertTransportStage(t, err, TransportValidation)
+	if conn.writeCount != 0 || conn.closeCount != 0 {
+		t.Fatalf("invalid destination opened or used transport: writes=%d closes=%d", conn.writeCount, conn.closeCount)
+	}
+}
+
 func TestSADPMutationTransportCancellationClosesOwnedConnection(t *testing.T) {
 	conn := newBlockingPacketConn()
 	ctx, cancel := context.WithCancel(context.Background())

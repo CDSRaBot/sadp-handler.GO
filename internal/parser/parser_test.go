@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -149,6 +151,49 @@ func TestParseAdvertisementAcceptsDHCPTransitionStates(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseAdvertisementFixturesPreserveDHCPIdentityAndState(t *testing.T) {
+	sender := &net.UDPAddr{IP: net.ParseIP(senderIP), Port: 37020}
+	testCases := []struct {
+		name        string
+		file        string
+		state       parser.NetworkAddressState
+		dhcp        bool
+		assigned    bool
+		wantAddress string
+	}{
+		{name: "zero address pending", file: "dhcp-zero.xml", state: parser.NetworkAddressPending, dhcp: true, wantAddress: "0.0.0.0"},
+		{name: "link local assigned", file: "dhcp-link-local.xml", state: parser.NetworkAddressAssigned, dhcp: true, assigned: true, wantAddress: "169.254.10.20"},
+		{name: "ordinary assigned address", file: "dhcp-assigned.xml", state: parser.NetworkAddressAssigned, dhcp: true, assigned: true, wantAddress: "198.51.100.20"},
+		{name: "static address", file: "static-network.xml", state: parser.NetworkAddressAssigned, assigned: true, wantAddress: "198.51.100.20"},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("..", "testdata", "sadp", testCase.file))
+			if err != nil {
+				t.Fatalf("read fixture: %v", err)
+			}
+			device, err := parser.ParseAdvertisement(data, sender, defaultLimit)
+			if err != nil {
+				t.Fatalf("ParseAdvertisement returned error: %v", err)
+			}
+			if device.MAC.String() != "00:11:22:33:44:55" || device.DHCP != testCase.dhcp ||
+				device.IPv4.String() != testCase.wantAddress || device.IPv4Assigned != testCase.assigned ||
+				device.AddressState() != testCase.state {
+				t.Fatalf("device identity/network state = MAC:%s DHCP:%t IPv4:%s assigned:%t state:%s",
+					device.MAC, device.DHCP, device.IPv4, device.IPv4Assigned, device.AddressState())
+			}
+		})
+	}
+}
+
+func TestParseAdvertisementRejectsStaticUnassignedAddress(t *testing.T) {
+	sender := &net.UDPAddr{IP: net.ParseIP(senderIP), Port: 37020}
+	payload := []byte(`<ProbeMatch><Types>inquiry</Types><MAC>00:11:22:33:44:55</MAC><IPv4Address>0.0.0.0</IPv4Address><DHCP>false</DHCP></ProbeMatch>`)
+
+	_, err := parser.ParseAdvertisement(payload, sender, defaultLimit)
+	assertParseFailure(t, parser.Device{}, err, parser.ParseInvalidField, "IPv4Address")
 }
 
 func TestParseAdvertisementRejectsInvalidDHCPState(t *testing.T) {

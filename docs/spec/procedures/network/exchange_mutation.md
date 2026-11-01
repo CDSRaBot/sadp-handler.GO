@@ -78,6 +78,12 @@ hashes.
 The response sender is deliberately not required to match the target here.
 M1 preserves it; M3 performs operation-specific correlation.
 
+DHCP transition advertisements containing `0.0.0.0` or `169.254.x.x` remain
+valid device state but must never be used as the outgoing UDP destination.
+Successful DHCP post-condition verification is published only after an
+advertisement with an assigned IPv4 address; MAC remains the correlation anchor
+when the sender changes.
+
 ## 5. Verification Requirements
 
 Tests derived from this procedure use deterministic fake connections and cover

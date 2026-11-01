@@ -38,9 +38,13 @@ func (t SADPMutationTransport) exchange(ctx context.Context, target logic.Mutati
 	if ctx == nil || len(target.MAC) != 6 || target.Sender == nil || len(payload) == 0 {
 		return result, &TransportError{Stage: TransportValidation, Err: errors.New("context, target, sender, and payload are required")}
 	}
+	if err := validateMutationDestination(target.Sender); err != nil {
+		return result, &TransportError{Stage: TransportValidation, Err: err}
+	}
 	if err := ctx.Err(); err != nil {
 		return result, &TransportError{Stage: TransportCanceled, Err: err}
 	}
+
 	limit := t.MaxDatagramSize
 	if limit == 0 {
 		limit = DefaultMaxSADPDatagramSize
@@ -129,6 +133,21 @@ func (t SADPMutationTransport) exchange(ctx context.Context, target logic.Mutati
 			return candidate, nil
 		}
 	}
+}
+
+func validateMutationDestination(destination net.Addr) error {
+	udp, ok := destination.(*net.UDPAddr)
+	if !ok || udp == nil {
+		return errors.New("mutation destination must be an IPv4 UDP address")
+	}
+	ip := udp.IP.To4()
+	if ip == nil || ip.IsUnspecified() {
+		return errors.New("mutation destination must be an assigned IPv4 address")
+	}
+	if udp.Port < 1 || udp.Port > 65535 {
+		return errors.New("mutation destination port is invalid")
+	}
+	return nil
 }
 
 func classifyMutationTransportError(ctx context.Context, stage TransportStage, err error) error {

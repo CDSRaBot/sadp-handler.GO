@@ -119,3 +119,22 @@ func TestVerifyNetworkFailsWhenFinalStateIsAbsent(t *testing.T) {
 		t.Fatalf("VerifyNetwork() error = %v, want transport timeout", err)
 	}
 }
+
+func TestVerifyNetworkIgnoresDHCPTransitionUntilAssignedAddress(t *testing.T) {
+	target := logic.MutationTarget{
+		MAC:    net.HardwareAddr{0, 17, 34, 51, 68, 85},
+		Sender: &net.UDPAddr{IP: net.ParseIP("192.0.2.10"), Port: 37020},
+	}
+	conn := &postconditionConn{reads: []postconditionRead{
+		{data: []byte(`<ProbeMatch><Types>inquiry</Types><MAC>00:11:22:33:44:55</MAC><IPv4Address>0.0.0.0</IPv4Address><DHCP>true</DHCP></ProbeMatch>`), sender: target.Sender},
+		{data: []byte(`<ProbeMatch><Types>inquiry</Types><MAC>00:11:22:33:44:55</MAC><IPv4Address>169.254.10.20</IPv4Address><DHCP>true</DHCP></ProbeMatch>`), sender: &net.UDPAddr{IP: net.ParseIP("169.254.10.20"), Port: 37020}},
+		{data: []byte(`<ProbeMatch><Types>inquiry</Types><MAC>00:11:22:33:44:55</MAC><IPv4Address>198.51.100.20</IPv4Address><DHCP>true</DHCP></ProbeMatch>`), sender: &net.UDPAddr{IP: net.ParseIP("198.51.100.20"), Port: 37020}},
+	}}
+	transport := SADPMutationTransport{MaxDatagramSize: 1024, Open: func() (net.PacketConn, error) {
+		return conn, nil
+	}}
+
+	if err := transport.VerifyNetwork(context.Background(), target, logic.NetworkConfig{UseDHCP: true}); err != nil {
+		t.Fatalf("VerifyNetwork() error = %v", err)
+	}
+}

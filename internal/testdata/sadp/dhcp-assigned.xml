@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ProbeMatch>
+  <Uuid>urn:uuid:fixture-dhcp-assigned</Uuid>
+  <Types>inquiry</Types>
+  <MAC>00-11-22-33-44-55</MAC>
+  <IPv4Address>198.51.100.20</IPv4Address>
+  <IPv4SubnetMask>255.255.255.0</IPv4SubnetMask>
+  <IPv4Gateway>198.51.100.1</IPv4Gateway>
+  <DHCP>true</DHCP>
+  <Activated>true</Activated>
+</ProbeMatch>
