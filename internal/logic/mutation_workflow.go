@@ -11,8 +11,10 @@ import (
 type MutationOperation string
 
 const (
-	MutationActivation MutationOperation = "activation"
-	MutationNetwork    MutationOperation = "network"
+	MutationActivation        MutationOperation = "activation"
+	MutationNetwork           MutationOperation = "network"
+	MutationSecurityQuestions MutationOperation = "security_questions"
+	MutationHikConnect        MutationOperation = "hik_connect"
 )
 
 type MutationTarget struct {
@@ -27,6 +29,10 @@ type MutationExchange struct {
 
 type MutationTransport interface {
 	Exchange(context.Context, MutationTarget, []byte) (MutationExchange, error)
+}
+
+type MatchingMutationTransport interface {
+	ExchangeMatching(context.Context, MutationTarget, []byte, func(MutationExchange) bool) (MutationExchange, error)
 }
 
 type Challenge struct {
@@ -115,6 +121,28 @@ func (w MutationWorkflow) ConfigureNetwork(ctx context.Context, target MutationT
 	return w.exchangeAndParse(ctx, MutationNetwork, target, payload)
 }
 
+func (w MutationWorkflow) ConfigureSecurityQuestions(ctx context.Context, target MutationTarget, questions []SecurityQuestion) (MutationDecision, error) {
+	if err := validateMutationContextTarget(ctx, target); err != nil {
+		return MutationDecision{}, err
+	}
+	payload, err := BuildSecurityQuestionsXML(SecurityQuestionsRequest{MAC: target.MAC, Questions: questions})
+	if err != nil {
+		return MutationDecision{}, err
+	}
+	return w.exchangeAndParse(ctx, MutationSecurityQuestions, target, payload)
+}
+
+func (w MutationWorkflow) ConfigureHikConnect(ctx context.Context, target MutationTarget, enabled bool, serverID string) (MutationDecision, error) {
+	if err := validateMutationContextTarget(ctx, target); err != nil {
+		return MutationDecision{}, err
+	}
+	payload, err := BuildHikConnectXML(HikConnectRequest{MAC: target.MAC, Enabled: enabled, ServerID: serverID})
+	if err != nil {
+		return MutationDecision{}, err
+	}
+	return w.exchangeAndParse(ctx, MutationHikConnect, target, payload)
+}
+
 func (w MutationWorkflow) ActivateMany(ctx context.Context, targets []MutationTarget, password, email string) ([]MutationOutcome, error) {
 	return w.runMany(ctx, targets, func(target MutationTarget) (MutationDecision, error) {
 		return w.Activate(ctx, target, password, email)
@@ -128,7 +156,23 @@ func (w MutationWorkflow) ConfigureNetworkMany(ctx context.Context, targets []Mu
 }
 
 func (w MutationWorkflow) exchangeAndParse(ctx context.Context, operation MutationOperation, target MutationTarget, payload []byte) (MutationDecision, error) {
-	exchange, err := w.Transport.Exchange(ctx, target, payload)
+	var matched MutationDecision
+	var matchedOK bool
+	var exchange MutationExchange
+	var err error
+	if transport, ok := w.Transport.(MatchingMutationTransport); ok {
+		exchange, err = transport.ExchangeMatching(ctx, target, payload, func(candidate MutationExchange) bool {
+			decision, parseErr := w.Parser.Parse(operation, target, candidate.Sender, candidate.Data)
+			if parseErr != nil || !validMutationDecision(operation, target, decision) {
+				return false
+			}
+			matched = decision
+			matchedOK = true
+			return true
+		})
+	} else {
+		exchange, err = w.Transport.Exchange(ctx, target, payload)
+	}
 	if err != nil {
 		return MutationDecision{}, normalizeMutationError(err, OperationTransport)
 	}
@@ -138,18 +182,28 @@ func (w MutationWorkflow) exchangeAndParse(ctx context.Context, operation Mutati
 	if w.MaxResponseSize > 0 && len(exchange.Data) > w.MaxResponseSize {
 		return MutationDecision{}, operationError(OperationMalformed, errors.New("mutation response exceeds configured size"))
 	}
-	decision, err := w.Parser.Parse(operation, target, exchange.Sender, exchange.Data)
-	if err != nil {
-		return MutationDecision{}, normalizeMutationError(err, OperationMalformed)
+	decision := matched
+	if !matchedOK {
+		decision, err = w.Parser.Parse(operation, target, exchange.Sender, exchange.Data)
+		if err != nil {
+			return MutationDecision{}, normalizeMutationError(err, OperationMalformed)
+		}
 	}
-	if decision.Operation != operation || decision.Status != MutationAccepted && decision.Status != MutationRejected {
+	if !validMutationDecision(operation, target, decision) {
 		return MutationDecision{}, operationError(OperationMalformed, errors.New("mutation response decision is invalid"))
 	}
 	if !sameMAC(decision.Target.MAC, target.MAC) {
 		return MutationDecision{}, operationError(OperationCorrelation, errors.New("mutation response target mismatch"))
 	}
+
 	decision.Target = target
 	return decision, nil
+}
+
+func validMutationDecision(operation MutationOperation, target MutationTarget, decision MutationDecision) bool {
+	return decision.Operation == operation &&
+		(decision.Status == MutationAccepted || decision.Status == MutationRejected) &&
+		sameMAC(decision.Target.MAC, target.MAC)
 }
 
 func (w MutationWorkflow) runMany(ctx context.Context, targets []MutationTarget, run func(MutationTarget) (MutationDecision, error)) ([]MutationOutcome, error) {

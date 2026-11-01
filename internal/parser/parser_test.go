@@ -121,9 +121,41 @@ func TestParseAdvertisementAcceptsExactSizeBoundaryAndIgnoresUnknownFields(t *te
 	if err != nil {
 		t.Fatalf("exact-size payload returned error: %v", err)
 	}
+
 	if device.SoftwareVersion != "V1.2.3" {
 		t.Fatalf("SoftwareVersion = %q, want preserved version", device.SoftwareVersion)
 	}
+
+}
+
+func TestParseAdvertisementAcceptsDHCPTransitionStates(t *testing.T) {
+	sender := &net.UDPAddr{IP: net.ParseIP(senderIP), Port: 37020}
+	for _, testCase := range []struct {
+		name  string
+		ip    string
+		state parser.NetworkAddressState
+	}{
+		{name: "unassigned", ip: "0.0.0.0", state: parser.NetworkAddressPending},
+		{name: "link local", ip: "169.254.10.20", state: parser.NetworkAddressAssigned},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			payload := []byte(`<ProbeMatch><Types>inquiry</Types><MAC>00:11:22:33:44:55</MAC><IPv4Address>` + testCase.ip + `</IPv4Address><DHCP>true</DHCP></ProbeMatch>`)
+			device, err := parser.ParseAdvertisement(payload, sender, defaultLimit)
+			if err != nil {
+				t.Fatalf("ParseAdvertisement returned error: %v", err)
+			}
+			if !device.DHCP || device.AddressState() != testCase.state {
+				t.Fatalf("device network state = DHCP:%t address:%s state:%s", device.DHCP, device.IPv4, device.AddressState())
+			}
+		})
+	}
+}
+
+func TestParseAdvertisementRejectsInvalidDHCPState(t *testing.T) {
+	sender := &net.UDPAddr{IP: net.ParseIP(senderIP), Port: 37020}
+	payload := []byte(`<ProbeMatch><Types>inquiry</Types><MAC>00:11:22:33:44:55</MAC><IPv4Address>192.0.2.20</IPv4Address><DHCP>flase</DHCP></ProbeMatch>`)
+	_, err := parser.ParseAdvertisement(payload, sender, defaultLimit)
+	assertParseFailure(t, parser.Device{}, err, parser.ParseInvalidField, "DHCP")
 }
 
 func TestParseAdvertisementErrorsAreSafeAndWrapCauses(t *testing.T) {

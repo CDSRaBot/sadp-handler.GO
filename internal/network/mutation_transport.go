@@ -22,6 +22,19 @@ type SADPMutationTransport struct {
 }
 
 func (t SADPMutationTransport) Exchange(ctx context.Context, target logic.MutationTarget, payload []byte) (result logic.MutationExchange, resultErr error) {
+	return t.exchange(ctx, target, payload, nil)
+}
+
+// ExchangeMatching drains unrelated datagrams until matcher accepts a response.
+// It is intentionally optional so existing transports remain compatible.
+func (t SADPMutationTransport) ExchangeMatching(ctx context.Context, target logic.MutationTarget, payload []byte, matcher func(logic.MutationExchange) bool) (logic.MutationExchange, error) {
+	if matcher == nil {
+		return logic.MutationExchange{}, &TransportError{Stage: TransportValidation, Err: errors.New("response matcher is nil")}
+	}
+	return t.exchange(ctx, target, payload, matcher)
+}
+
+func (t SADPMutationTransport) exchange(ctx context.Context, target logic.MutationTarget, payload []byte, matcher func(logic.MutationExchange) bool) (result logic.MutationExchange, resultErr error) {
 	if ctx == nil || len(target.MAC) != 6 || target.Sender == nil || len(payload) == 0 {
 		return result, &TransportError{Stage: TransportValidation, Err: errors.New("context, target, sender, and payload are required")}
 	}
@@ -100,17 +113,22 @@ func (t SADPMutationTransport) Exchange(ctx context.Context, target logic.Mutati
 	}
 
 	buffer := make([]byte, limit+1)
-	n, sender, err := conn.ReadFrom(buffer)
-	if err != nil {
-		return result, classifyMutationTransportError(ctx, TransportRead, err)
+	for {
+		n, sender, err := conn.ReadFrom(buffer)
+		if err != nil {
+			return result, classifyMutationTransportError(ctx, TransportRead, err)
+		}
+		if n > limit {
+			return result, &TransportError{Stage: TransportResponseTooLarge, Err: errors.New("response exceeds datagram size")}
+		}
+		if n == 0 || sender == nil {
+			continue
+		}
+		candidate := logic.MutationExchange{Sender: sender, Data: append([]byte(nil), buffer[:n]...)}
+		if matcher == nil || matcher(candidate) {
+			return candidate, nil
+		}
 	}
-	if n > limit {
-		return result, &TransportError{Stage: TransportResponseTooLarge, Err: errors.New("response exceeds datagram size")}
-	}
-	if n == 0 || sender == nil {
-		return result, &TransportError{Stage: TransportRead, Err: errors.New("empty mutation response")}
-	}
-	return logic.MutationExchange{Sender: sender, Data: append([]byte(nil), buffer[:n]...)}, nil
 }
 
 func classifyMutationTransportError(ctx context.Context, stage TransportStage, err error) error {

@@ -13,12 +13,36 @@ import (
 // Device is the validated device information extracted from an advertisement.
 type Device struct {
 	MAC             net.HardwareAddr
+	UUID            string
+	Types           string
 	IPv4            netip.Addr
+	IPv4Assigned    bool
+	IPv4Mask        netip.Addr
+	IPv4Gateway     netip.Addr
+	DHCP            bool
 	Activated       bool
 	Model           string
 	SerialNumber    string
 	SoftwareVersion string
 	Sender          net.Addr
+}
+
+type NetworkAddressState string
+
+const (
+	NetworkAddressAssigned NetworkAddressState = "assigned"
+	NetworkAddressPending  NetworkAddressState = "pending"
+	NetworkAddressUnknown  NetworkAddressState = "unknown"
+)
+
+func (d Device) AddressState() NetworkAddressState {
+	if !d.IPv4.IsValid() || (d.DHCP && d.IPv4.IsUnspecified()) {
+		return NetworkAddressPending
+	}
+	if d.IPv4Assigned {
+		return NetworkAddressAssigned
+	}
+	return NetworkAddressUnknown
 }
 
 // ParseErrorKind identifies the stage at which advertisement parsing failed.
@@ -69,7 +93,7 @@ func ParseAdvertisement(data []byte, sender net.Addr, maxDatagramSize int) (Devi
 	if err != nil {
 		return Device{}, err
 	}
-	if fields.root == "ProbeMatch" && fields.types != "inquiry" {
+	if fields.root == "ProbeMatch" && !supportedType(fields.types) {
 		return Device{}, parseError(ParseUnsupported, "", errors.New("unsupported message type"))
 	}
 	if fields.root == "Hello" && fields.types != "hello" {
@@ -85,6 +109,9 @@ func ParseAdvertisement(data []byte, sender net.Addr, maxDatagramSize int) (Devi
 	if !fields.macPresent {
 		return Device{}, parseError(ParseMissingField, "MAC", errors.New("required field is missing"))
 	}
+	if fields.dhcpPresent && fields.dhcpValue != "" && fields.dhcpValue != "true" && fields.dhcpValue != "false" {
+		return Device{}, parseError(ParseInvalidField, "DHCP", errors.New("value must be true or false"))
+	}
 	mac, err := NormalizeMAC(fields.mac)
 	if err != nil {
 		return Device{}, parseError(ParseInvalidField, "MAC", err)
@@ -93,11 +120,19 @@ func ParseAdvertisement(data []byte, sender net.Addr, maxDatagramSize int) (Devi
 		return Device{}, parseError(ParseMissingField, "IPv4Address", errors.New("required field is missing"))
 	}
 	ipv4, err := netip.ParseAddr(fields.ipv4)
-	if err != nil || !ipv4.Is4() || ipv4.IsUnspecified() {
+	if err != nil || !ipv4.Is4() || (ipv4.IsUnspecified() && !fields.dhcp) {
 		if err == nil {
 			err = errors.New("value is not a usable IPv4 address")
 		}
 		return Device{}, parseError(ParseInvalidField, "IPv4Address", err)
+	}
+	mask, err := parseOptionalIPv4(fields.ipv4Mask, "SubnetMask")
+	if err != nil {
+		return Device{}, err
+	}
+	gateway, err := parseOptionalIPv4(fields.ipv4Gateway, "DefaultGateway")
+	if err != nil {
+		return Device{}, err
 	}
 
 	activated := false
@@ -113,13 +148,42 @@ func ParseAdvertisement(data []byte, sender net.Addr, maxDatagramSize int) (Devi
 
 	return Device{
 		MAC:             mac,
+		UUID:            fields.uuid,
+		Types:           fields.types,
 		IPv4:            ipv4,
+		IPv4Assigned:    !ipv4.IsUnspecified(),
+		IPv4Mask:        mask,
+		IPv4Gateway:     gateway,
+		DHCP:            fields.dhcp,
 		Activated:       activated,
 		Model:           fields.model,
 		SerialNumber:    fields.serial,
 		SoftwareVersion: fields.softwareVersion,
 		Sender:          sender,
 	}, nil
+}
+
+func supportedType(value string) bool {
+	switch value {
+	case "inquiry", "update", "activate", "exchangecode", "getsecurityquestion", "setsecurityquestion", "SetHCPlatform":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseOptionalIPv4(value, field string) (netip.Addr, error) {
+	if value == "" {
+		return netip.Addr{}, nil
+	}
+	address, err := netip.ParseAddr(value)
+	if err != nil || !address.Is4() {
+		if err == nil {
+			err = errors.New("value is not an IPv4 address")
+		}
+		return netip.Addr{}, parseError(ParseInvalidField, field, err)
+	}
+	return address, nil
 }
 
 func NormalizeMAC(value string) (net.HardwareAddr, error) {
@@ -136,14 +200,20 @@ func NormalizeMAC(value string) (net.HardwareAddr, error) {
 type advertisementFields struct {
 	root            string
 	types           string
+	uuid            string
 	mac             string
 	ipv4            string
+	ipv4Mask        string
+	ipv4Gateway     string
+	dhcp            bool
+	dhcpValue       string
 	activated       string
 	model           string
 	serial          string
 	softwareVersion string
 	macPresent      bool
 	ipv4Present     bool
+	dhcpPresent     bool
 }
 
 func decodeAdvertisement(data []byte) (advertisementFields, error) {
@@ -273,12 +343,28 @@ func assignField(fields *advertisementFields, name, value string) {
 	switch name {
 	case "Types":
 		fields.types = value
+	case "Uuid", "UUID":
+		fields.uuid = value
 	case "MAC":
 		fields.mac = value
 		fields.macPresent = true
 	case "IPv4Address":
 		fields.ipv4 = value
 		fields.ipv4Present = true
+	case "SubnetMask":
+		fields.ipv4Mask = value
+	case "DefaultGateway":
+		fields.ipv4Gateway = value
+	case "DHCP":
+		fields.dhcpPresent = true
+		fields.dhcpValue = strings.ToLower(value)
+		switch strings.ToLower(value) {
+		case "true":
+			fields.dhcp = true
+		case "false", "":
+		default:
+			fields.dhcp = false
+		}
 	case "Activated":
 		fields.activated = value
 	case "DeviceModel":

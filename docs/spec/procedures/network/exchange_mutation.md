@@ -64,7 +64,10 @@ hashes.
 1. Validate the target, payload, limit, and context.
 2. Establish the documented deadline and ownership.
 3. Send one datagram.
-4. Read one bounded response while preserving its sender.
+4. In operation-aware mode, read until the operation/MAC/UUID matcher accepts
+   a response or the shared deadline expires; discard unrelated datagrams. In
+   compatibility mode, return the first non-empty bounded response while
+   preserving its sender.
 5. Return the response to M3 for challenge extraction or mutation-result
    parsing.
 6. Close owned resources and return any cleanup failure according to the
