@@ -51,3 +51,18 @@ the same password and request, then change exactly one input at a time
 (network field, challenge/exchange code, or Salt), retaining XML, UUID, device
 result, and timestamps. Secrets stay outside the repository; only a redacted
 fixture and provenance are committed.
+
+## Recursive audit result (Phase 3)
+
+| Boundary | Result | Decision |
+|---|---|---|
+| SDK `<Probe>` -> Go XML | BLOCKED: the current builder emits `NetworkParameter/SecurityResponse`, not SDK `<Probe>/Password[bSalt]` | do not treat the builder as a salted codec |
+| Profile selection -> encoder | PASS: profile selection is explicit and missing encoder returns a typed error | retain fail-closed behavior |
+| Encoder -> payload | PARTIAL: the injected encoder is a test seam with no wire provenance | allow the seam only until Research |
+| SADP vs ISAPI | PASS: `security`/`iv` are not used in raw SADP | do not transfer ISAPI crypto |
+| Error/logging boundary | PASS: normal errors do not contain payload/secrets | add negative tests |
+| Vector -> production codec | BLOCKED: no controlled plaintext/ciphertext pair exists | wait for Research #81 |
+
+Therefore Phase 4 can verify profile selection, fail-closed behavior, and
+absence of leaks only. It cannot verify the algorithm or camera compatibility
+of a salted payload.

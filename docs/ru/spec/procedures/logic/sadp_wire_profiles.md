@@ -57,3 +57,18 @@ ciphertext не копируются в репозиторий.
 с сохранением XML, UUID, результата устройства и времени. Секретные данные
 хранятся вне репозитория; в репозиторий попадает только редактированный
 fixture и provenance.
+
+## Результат рекурсивного аудита (Фаза 3)
+
+| Граница | Результат | Решение |
+|---|---|---|
+| SDK `<Probe>` → Go XML | BLOCKED: текущий builder формирует `NetworkParameter/SecurityResponse`, а не SDK `<Probe>/Password[bSalt]` | не считать builder salted codec |
+| Profile selection → encoder | PASS: профиль выбирается явно, отсутствие encoder даёт typed error | сохранить fail-closed |
+| Encoder → payload | PARTIAL: injected encoder позволяет тестовый seam, но его output не имеет wire provenance | разрешать только seam до Research |
+| SADP ↔ ISAPI | PASS: `security`/`iv` не используются в raw SADP | не переносить ISAPI crypto |
+| Error/logging boundary | PASS: штатные ошибки не содержат payload/секреты | добавить negative tests |
+| Vector → production codec | BLOCKED: нет controlled plaintext/ciphertext pair | ожидать Research #81 |
+
+Следствие аудита: Фаза 4 может подтвердить только контракт выбора профиля,
+fail-closed поведение и отсутствие утечек. Она не может подтвердить алгоритм
+или совместимость salted payload с камерой.

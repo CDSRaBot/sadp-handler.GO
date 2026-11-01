@@ -47,9 +47,62 @@ func TestBuildNetworkXMLWithSaltedProfileFailsClosedWithoutCodec(t *testing.T) {
 	if len(payload) != 0 || err == nil {
 		t.Fatalf("payload/error = %q/%v, want empty payload and error", payload, err)
 	}
+
 	var operationErr *logic.DeviceOperationError
 	if !errors.As(err, &operationErr) || operationErr.Kind != logic.OperationInvalidInput {
 		t.Fatalf("error = %T %v, want invalid-input operation error", err, err)
+	}
+}
+
+func TestBuildNetworkXMLWithSaltedProfileFailsClosedOnEncoderFailure(t *testing.T) {
+	const secretPassword = "glazok.kz"
+	const secretChallenge = "challenge-secret"
+	payload, err := logic.BuildNetworkXMLWithProfile(
+		net.HardwareAddr{0, 17, 34, 51, 68, 85},
+		logic.NetworkConfig{UseDHCP: true},
+		secretChallenge,
+		secretPassword,
+		logic.SADPWireOptions{
+			Profile: logic.SADPWireProfileSaltedAES,
+			Encode: func(string, string) (string, error) {
+				return "", errors.New("codec unavailable")
+			},
+		},
+	)
+	if len(payload) != 0 || err == nil {
+		t.Fatalf("payload/error = %q/%v, want empty payload and error", payload, err)
+	}
+	if strings.Contains(err.Error(), secretPassword) || strings.Contains(err.Error(), secretChallenge) {
+		t.Fatalf("error disclosed sensitive input: %v", err)
+	}
+}
+
+func TestBuildNetworkXMLWithSaltedProfileRejectsEmptyEncoderOutput(t *testing.T) {
+	payload, err := logic.BuildNetworkXMLWithProfile(
+		net.HardwareAddr{0, 17, 34, 51, 68, 85},
+		logic.NetworkConfig{UseDHCP: true},
+		"challenge",
+		"password",
+		logic.SADPWireOptions{
+			Profile: logic.SADPWireProfileSaltedAES,
+			Encode:  func(string, string) (string, error) { return "", nil },
+		},
+	)
+	if len(payload) != 0 || err == nil {
+		t.Fatalf("payload/error = %q/%v, want empty payload and error", payload, err)
+	}
+}
+
+func TestBuildNetworkXMLWithProfileRejectsUnknownProfile(t *testing.T) {
+	payload, err := logic.BuildNetworkXMLWithProfile(
+		net.HardwareAddr{0, 17, 34, 51, 68, 85},
+		logic.NetworkConfig{UseDHCP: true},
+		"challenge",
+		"password",
+		logic.SADPWireOptions{Profile: logic.SADPWireProfile("future")},
+	)
+	if len(payload) != 0 || err == nil {
+		t.Fatalf("payload/error = %q/%v, want empty payload and error", payload, err)
 	}
 }
 
