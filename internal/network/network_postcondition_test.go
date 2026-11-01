@@ -81,6 +81,30 @@ func TestVerifyNetworkAcceptsFinalInquiryFromNewSender(t *testing.T) {
 	}
 }
 
+func TestExchangeMatchingDrainsUnrelatedDatagrams(t *testing.T) {
+	target := logic.MutationTarget{
+		MAC:    net.HardwareAddr{0, 17, 34, 51, 68, 85},
+		Sender: &net.UDPAddr{IP: net.ParseIP("192.0.2.10"), Port: 37020},
+	}
+	conn := &postconditionConn{reads: []postconditionRead{
+		{data: []byte(`<ProbeMatch><Types>inquiry</Types><MAC>aa-bb-cc-dd-ee-ff</MAC></ProbeMatch>`), sender: target.Sender},
+		{data: []byte(`<ProbeMatch><Types>update</Types><MAC>00-11-22-33-44-55</MAC></ProbeMatch>`), sender: &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 37020}},
+	}}
+	transport := SADPMutationTransport{MaxDatagramSize: 1024, Open: func() (net.PacketConn, error) {
+		return conn, nil
+	}}
+	exchange, err := transport.ExchangeMatching(context.Background(), target, []byte("request"), func(candidate logic.MutationExchange) bool {
+		identity, parseErr := logic.ParseMutationResponseIdentity(candidate.Data)
+		return parseErr == nil && identity.Types == "update" && identity.MAC.String() == target.MAC.String()
+	})
+	if err != nil {
+		t.Fatalf("ExchangeMatching() error = %v", err)
+	}
+	if string(exchange.Data) == "" || !conn.closed {
+		t.Fatalf("exchange/cleanup = %#v/%t", exchange, conn.closed)
+	}
+}
+
 func TestVerifyNetworkFailsWhenFinalStateIsAbsent(t *testing.T) {
 	target := logic.MutationTarget{
 		MAC:    net.HardwareAddr{0, 17, 34, 51, 68, 85},
