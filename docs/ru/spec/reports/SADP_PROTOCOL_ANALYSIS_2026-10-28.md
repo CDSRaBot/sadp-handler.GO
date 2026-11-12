@@ -1,10 +1,11 @@
 # SADP: сводный анализ протокола и рабочих процедур
 
-**Дата анализа:** 28.10.2026  
+**Дата анализа:** 12.11.2026 (уточнено по трассам от 11.11.2026)  
 **Статус:** исследовательский отчёт; подтверждённые wire-факты отделены от
 гипотез и незавершённых реконструкций  
-**Объект:** Hikvision SADP SDK 4.6.0.151, камера
-DS-2CD1021-I, прошивка V5.5.801 build 210701
+**Объект:** Hikvision SADP SDK 4.6.0.151; исходная трасса —
+DS-2CD1021-I, прошивка V5.5.801 build 210701. Дополнительно учтены
+трассы от 11.11.2026 с несколькими моделями и прошивками.
 
 ## 1. Источники и границы достоверности
 
@@ -24,6 +25,8 @@ DS-2CD1021-I, прошивка V5.5.801 build 210701
   [build_activation_xml.go](../../../internal/logic/build_activation_xml.go);
 - текущий SADP-парсер
   [parser.go](../../../internal/parser/parser.go).
+- дополнительные сетевые трассы и логи SDK из
+  [SadpLog.zip](../../../../../SadpLog.zip).
 
 Сетевой перехват подтверждает фактические сообщения, которые были
 переданы по сети. Логи SDK дополнительно показывают исходный XML до
@@ -47,8 +50,8 @@ SADP в исследованном сеансе — самостоятельны
 | Идентичность устройства | MAC, например `94-e1-ac-dd-a3-6f` |
 | Идентификатор операции | UUID сообщения |
 | Тип операции | `<Types>` |
-| Основные типы | `inquiry`, `update`, `activate`, `exchangecode`, `getsecurityquestion`, `setsecurityquestion`, `SetHCPlatform` |
-| Основной рабочий интерфейс ПК | `192.168.1.250` |
+| Подтверждённые типы в новых трассах | `inquiry`, `exchangecode`, `activate`, `getsecurityquestion`, `SetVerificationCode`, `SetHCPlatform`, `SetMailBox` |
+| Интерфейсы SDK в новых трассах | `192.168.10.102`, `0.0.0.0` и loopback-копия `127.0.0.1` |
 
 Главные инженерные выводы:
 
@@ -56,9 +59,9 @@ SADP в исследованном сеансе — самостоятельны
    корреляции. Главным ключом является MAC.
 2. Одна команда может породить несколько UDP-сообщений: непосредственный
    ответ, `update`, `inquiry`, дубликат через loopback.
-3. Для изменения сети реальный SDK использует
-   `<Password bSalt="true">`, а не текущий в Go формат
-   `<SecurityResponse>`.
+3. Защищённые команды используют `<Password>`, но алгоритм его формирования
+   по новым трассам не восстановлен. Атрибут `bSalt="true"` в этих трассах
+   не подтверждён.
 4. После `success` требуется проверка post-condition через последующее
    объявление устройства.
 5. DHCP имеет промежуточные состояния с `0.0.0.0` и `169.254.x.x`.
@@ -179,8 +182,11 @@ flowchart TD
 или отсутствию этого поля не выявлено; состояние активации следует
 извлекать из него независимо от модели и поколения firmware.
 
-`Salt`, зашифрованные поля и ответы на контрольные вопросы не должны
-попадать в журналы.
+`Salt` является полем объявления устройства. В проверенных трассах он имеет
+вид 64 hex-символов, повторяется для одного устройства и различается между
+устройствами. В исходящих запросах `Salt` не передаётся, поэтому его связь
+с `<Password>` или `<Code>` не установлена. Salt, зашифрованные поля и
+ответы на контрольные вопросы не должны попадать в журналы.
 
 ## 5. Процедура A — обнаружение устройства
 
@@ -297,13 +303,25 @@ flowchart LR
 
 ### 7.1. Подтверждённые сообщения
 
-В перехвате видна последовательность:
+Для успешных операций в новых трассах подтверждена последовательность:
 
 ```text
-exchangecode -> activate -> update/inquiry
+exchangecode -> activate
 ```
 
-Ответы имеют форму:
+Исходящий запрос `exchangecode` имеет форму:
+
+```xml
+<Probe>
+  <Uuid>...</Uuid>
+  <MAC>...</MAC>
+  <Types>exchangecode</Types>
+  <Code>RSA-public-key</Code>
+</Probe>
+```
+
+Значение `<Code>` в запросе имеет вид Base64 DER RSA public key. Ответ
+устройства имеет форму:
 
 ```xml
 <ProbeMatch>
@@ -314,7 +332,18 @@ exchangecode -> activate -> update/inquiry
 </ProbeMatch>
 ```
 
-затем:
+После успешного обмена SDK отправляет защищённый запрос активации:
+
+```xml
+<Probe>
+  <Uuid>...</Uuid>
+  <MAC>...</MAC>
+  <Types>activate</Types>
+  <Password>encrypted-value</Password>
+</Probe>
+```
+
+Ответ активации:
 
 ```xml
 <ProbeMatch>
@@ -324,11 +353,15 @@ exchangecode -> activate -> update/inquiry
 </ProbeMatch>
 ```
 
-Проверка результата выполняется по последующему объявлению:
+Проверка итогового состояния выполняется отдельным `inquiry` по MAC и
+временному окну после операции:
 
 ```xml
 <Activated>true</Activated>
 ```
+
+`inquiry` не следует считать прямым ответом на `activate`: SDK параллельно
+публикует периодические объявления и дубликаты через локальный IPC.
 
 ### 7.2. Логика завершённой процедуры
 
@@ -337,9 +370,9 @@ sequenceDiagram
     participant App as Наша программа
     participant Cam as Камера
 
-    App->>Cam: Probe(Uuid, Types=exchangecode, activation data)
-    Cam-->>App: ProbeMatch(exchangecode, Result=success, Code)
-    App->>App: Проверить MAC/UUID/срок действия обмена
+    App->>Cam: Probe(Uuid, MAC, Types=exchangecode, RSA public key)
+    Cam-->>App: ProbeMatch(exchangecode, Result=success, encrypted Code)
+    App->>App: Расшифровать Code локальным ключом
     App->>Cam: Probe(Uuid, Types=activate, protected password)
     Cam-->>App: ProbeMatch(activate, Result=success)
     App->>Cam: Probe(Uuid, Types=inquiry)
@@ -351,10 +384,9 @@ sequenceDiagram
 
 Не восстановлены с достаточной уверенностью:
 
-- точная форма исходного `exchangecode`;
-- алгоритм формирования `<Code>`;
+- полный формат RSA-обмена и расшифрованного содержимого response `<Code>`;
 - точная форма защищённого поля активации;
-- связь между `Salt` из объявления и `Code`;
+- связь между `Salt` из объявления и любым защищённым полем;
 - обязательность контрольных вопросов для всех прошивок — не подтверждена и
   опровергается практикой на устройствах разных поколений; вопросы могут
   вообще не устанавливаться;
@@ -396,9 +428,9 @@ type SecurityQuestion struct {
 }
 ```
 
-### 8.2. Установка
+### 8.2. Установка и отличие от новых трасс
 
-Наблюдаемая последовательность:
+В исходном материале отчёта описывалась последовательность:
 
 ```text
 getsecurityquestion
@@ -407,13 +439,28 @@ getsecurityquestion
   -> update/inquiry
 ```
 
-Ответ команды:
+Однако в новых трассах операция записи вопросов в точном виде
+`setsecurityquestion` не подтверждена. В них наблюдается отдельная команда
+`SetVerificationCode`. По одному имени и содержимому этой команды нельзя
+считать её операцией записи контрольных вопросов:
+
+```xml
+<Probe>
+  <Uuid>...</Uuid>
+  <MAC>...</MAC>
+  <Types>SetVerificationCode</Types>
+  <VerificationCode>encrypted-value</VerificationCode>
+  <Password>encrypted-value</Password>
+</Probe>
+```
+
+Ответ команды имеет вид:
 
 ```xml
 <ProbeMatch>
   <Uuid>...</Uuid>
   <MAC>94-e1-ac-dd-a3-6f</MAC>
-  <Types>setsecurityquestion</Types>
+  <Types>SetVerificationCode</Types>
   <Result>success</Result>
 </ProbeMatch>
 ```
@@ -431,18 +478,18 @@ sequenceDiagram
     App->>Cam: Probe(Types=exchangecode)
     Cam-->>App: Code
     App->>App: Сформировать защищённый payload
-    App->>Cam: Probe(Types=setsecurityquestion)
+    App->>Cam: Probe(Types=SetVerificationCode, protected fields)
     Cam-->>App: Result=success
     App->>Cam: Probe(Types=inquiry)
     Cam-->>App: Обновлённое состояние
-    App-->>App: SecurityQuestionsAccepted
+    App-->>App: ConfigurationAccepted
 ```
 
 Настройка контрольных вопросов является отдельной необязательной
 процедурой. Если пользователь её не запросил или устройство не объявляет
 соответствующую capability, активация не должна включать
 `getsecurityquestion`, дополнительный `exchangecode` или
-`setsecurityquestion`.
+`SetVerificationCode`.
 
 Типичный поддерживаемый вариант — отдельная команда с тремя парами
 «вопрос-ответ». Количество, идентификаторы вопросов и точный формат
@@ -456,7 +503,7 @@ sequenceDiagram
 - точные имена полей исходного запроса;
 - как передаются ответы `11`, `22`, `33`;
 - алгоритм защиты ответов;
-- является ли `exchangecode` общим для активации и вопросов;
+- является ли `exchangecode` общим для нескольких конфигурационных команд;
 - требуется ли отдельная проверка `mark=true` после записи.
 
 Нельзя реализовывать эту процедуру по одному только успешному ответу:
@@ -464,6 +511,36 @@ sequenceDiagram
 `inquiry`-состоянием. Если пользователь не выбирал настройку вопросов,
 их отсутствие не является ошибкой и не должно блокировать завершение
 активации.
+
+### 8.5. Другие защищённые команды, наблюдавшиеся в новых трассах
+
+Помимо `activate` и `SetVerificationCode`, SDK выполняет отдельный обмен
+`exchangecode` перед другими конфигурационными командами:
+
+```xml
+<Probe>
+  <Uuid>...</Uuid>
+  <MAC>...</MAC>
+  <Types>SetHCPlatform</Types>
+  <HCPlatformEnable>true</HCPlatformEnable>
+  <Password>encrypted-value</Password>
+</Probe>
+```
+
+и:
+
+```xml
+<Probe>
+  <Uuid>...</Uuid>
+  <MAC>...</MAC>
+  <Types>SetMailBox</Types>
+  <MailBox>encoded-value</MailBox>
+  <Password>encrypted-value</Password>
+</Probe>
+```
+
+Для каждой команды создаются собственные UUID и `exchangecode`. Один
+полученный `Code` нельзя считать универсальным для всего сеанса.
 
 ## 9. Процедура E — изменение статического IP
 
@@ -488,9 +565,8 @@ HttpPort=80
 
 ```xml
 <Types>update</Types>
-<PWErrorParse>true</PWErrorParse>
 <MAC>...</MAC>
-<Password bSalt="true">...</Password>
+<Password>...</Password>
 <IPv4Address>...</IPv4Address>
 <CommandPort>8000</CommandPort>
 <IPv4SubnetMask>...</IPv4SubnetMask>
@@ -501,6 +577,10 @@ HttpPort=80
 <DHCP>false</DHCP>
 <HttpPort>80</HttpPort>
 ```
+
+`PWErrorParse` и атрибут `bSalt` в новых трассах не подтверждены. Их нельзя
+включать в обязательный wire-профиль изменения сети без отдельной исходной
+трассы, где эти атрибуты действительно присутствуют.
 
 ### 9.2. Завершение
 
@@ -680,11 +760,16 @@ sequenceDiagram
 
 ## 12. Защита команды изменения сети
 
-Лог SADP SDK показывает:
+В новых трассах SDK исходящие защищённые команды имеют форму:
 
 ```xml
-<Password bSalt="true">Base64(ciphertext)</Password>
+<Password>Base64(ciphertext)</Password>
 ```
+
+Атрибут `bSalt="true"` в материалах из [SadpLog.zip](../../../../../SadpLog.zip)
+не найден. Он может относиться к другой версии SDK, другому wire-профилю или
+предыдущей трассе, но не должен считаться подтверждённым фактом для текущего
+набора данных.
 
 В текущей Go-реализации [BuildNetworkXML](../../../internal/logic/build_activation_xml.go)
 используется:
@@ -693,16 +778,20 @@ sequenceDiagram
 <SecurityResponse>sha256(password + challenge)</SecurityResponse>
 ```
 
-Это нельзя считать универсально совместимым с исследованным SDK. Для
-конкретного устройства из лога подтверждён только следующий факт:
+Это нельзя считать универсально совместимым с исследованным SDK. Для конкретных устройств из новых трасс подтверждены следующие факты:
 
 ```text
-Probe + Password[bSalt=true] + PWErrorParse=true
+Probe + Types=exchangecode + Code=RSA-public-key
+Probe + Types=update/конфигурационная команда + Password=Base64-value
 ```
 
-Алгоритм формирования ciphertext пока не идентифицирован. До получения
-контролируемых пар plaintext/ciphertext нельзя безопасно реализовывать
-криптографию по догадке.
+Алгоритм формирования ciphertext и связь с XML-полем `Salt` пока не
+идентифицированы. До получения контролируемых пар plaintext/ciphertext
+нельзя безопасно реализовывать криптографию по догадке.
+
+Перед отдельными защищёнными командами SDK получает новый `exchangecode`.
+Нельзя предполагать, что один обменный код универсален для `activate`,
+`SetVerificationCode`, `SetHCPlatform`, `SetMailBox` и изменения сети.
 
 ## 13. Требования к корреляции и приёму
 
@@ -719,7 +808,7 @@ send command
   -> verify operation UUID where available
   -> ignore duplicate/local copy
   -> accept only expected Types
-  -> wait for post-condition inquiry/update
+  -> wait for post-condition inquiry/update when the operation changes state
 ```
 
 Нельзя требовать:
@@ -742,7 +831,7 @@ device sender -> 127.0.0.1 duplicate
 
 - пароль;
 - `<Password>` и его ciphertext;
-- `<Code>` из `exchangecode`;
+- `<Code>` из `exchangecode` (как запросный public key, так и ответный ciphertext);
 - `Salt`;
 - ответы на контрольные вопросы;
 - полные исходящие XML с чувствительными полями.
@@ -776,9 +865,9 @@ error stage
 | Изменение статического IP | Форма XML подтверждена, защита не подтверждена | Нужен wire profile и crypto fixture |
 | Включение DHCP | Последовательность подтверждена | Нужны промежуточные IP-состояния |
 | Отключение DHCP | Практически подтверждено | Нужна отдельная проверка post-condition |
-| Активация | Типы и порядок подтверждены | Защищённое поле и exchangecode не восстановлены; вопросы не обязательны |
+| Активация | Типы и порядок подтверждены | Обмен public key/response Code и защищённое поле наблюдаются; алгоритм не восстановлен |
 | Чтение вопросов | Подтверждено для поддерживающих устройств | Можно реализовать как отдельную опциональную операцию |
-| Установка вопросов | Результат подтверждён, запрос неизвестен | Нужен дополнительный capture; не включать автоматически в активацию |
+| Установка вопросов | `getsecurityquestion` подтверждён; `setsecurityquestion` не подтверждён новыми трассами | Не смешивать с `SetVerificationCode`; нужен отдельный capture |
 | Hik-Connect enable | Типы и порядок подтверждены | Payload protection не восстановлена |
 | Hik-Connect disable | Предполагается симметрично | Нужен отдельный capture |
 
@@ -786,8 +875,8 @@ error stage
 
 Отдельно зафиксированы следующие неопределённости:
 
-1. алгоритм и ключевывод для `<Password bSalt="true">`;
-2. точная форма исходного `exchangecode`;
+1. алгоритм и ключевывод для `<Password>`;
+2. полный формат RSA-обмена `exchangecode`;
 3. связь `Salt` объявления с защищённым payload;
 4. точный формат активационного пароля в raw SADP;
 5. исходный XML установки контрольных вопросов;
@@ -813,15 +902,16 @@ error stage
 
 1. Расширить `Device` сетевыми и capability-полями.
 2. Добавить типизированные операции `exchangecode`, `getsecurityquestion`,
-   `setsecurityquestion`, `SetHCPlatform`.
-3. Разделить legacy/hash и salted-password wire profiles.
+   `SetVerificationCode`, `SetHCPlatform`, `SetMailBox`.
+3. Не объединять `Salt` из объявления с отдельным wire-атрибутом `bSalt`
+   без подтверждающей трассы.
 4. Сохранить raw capability bytes без преждевременной расшифровки.
 
 ### P2 — криптография и неизвестные операции
 
 1. Получить контролируемые SDK-логи с известным паролем.
 2. Сопоставить plaintext и ciphertext для нескольких повторов.
-3. Получить исходные payload `activate`, `setsecurityquestion` и
-   `SetHCPlatform`.
+3. Получить исходные payload `activate`, `SetVerificationCode`,
+   `SetHCPlatform`, `SetMailBox` и изменения сети.
 4. Добавить wire-fixtures и только после этого реализовывать
    соответствующие криптографические билдеры.
