@@ -16,6 +16,7 @@ func TestISAPIResponseStatusMustConfirmSuccess(t *testing.T) {
 		{payload: `<Other><statusCode>1</statusCode></Other>`, wantErr: ErrorMalformed},
 		{payload: `<ResponseStatus><statusCode>4</statusCode><statusCode>1</statusCode></ResponseStatus>`, wantErr: ErrorMalformed},
 		{payload: `<ResponseStatus><statusCode><value>1</value></statusCode></ResponseStatus>`, wantErr: ErrorMalformed},
+		{payload: `<ResponseStatus><statusCode>1</statusCode><other><statusCode>4</statusCode></other></ResponseStatus>`, wantErr: ErrorMalformed},
 		{payload: `<ResponseStatus><statusCode>1</statusCode></ResponseStatus><ResponseStatus/>`, wantErr: ErrorMalformed},
 	}
 	for _, tt := range tests {

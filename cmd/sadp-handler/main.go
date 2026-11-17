@@ -65,6 +65,7 @@ func run() int {
 	}
 	dependencies := app.BuildDependencies(runtime, app.ServiceSet{
 		UI: ui.Dependencies{
+			Discovery:        ui.SessionDiscoveryService{Sessions: session},
 			DiscoverySession: session,
 			InterfaceLister:  session,
 			Locales:          locales,

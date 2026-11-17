@@ -37,8 +37,23 @@ func TestComposeBuildsTypedRuntimeConfig(t *testing.T) {
 	if runtime.Protocol != "sadp_first" {
 		t.Fatalf("protocol strategy = %q, want sadp_first", runtime.Protocol)
 	}
+	if runtime.UI.Protocol != settings.Protocol.Strategy {
+		t.Fatalf("UI protocol strategy = %q, want %q", runtime.UI.Protocol, settings.Protocol.Strategy)
+	}
 	if _, err := fs.ReadFile(runtime.Localization.FS, "locales/ru.json"); err != nil {
 		t.Fatalf("configured localization directory was not mapped: %v", err)
+	}
+}
+
+func TestComposePreservesISAPIOnlyUIProtocol(t *testing.T) {
+	settings := config.Defaults()
+	settings.Protocol.Strategy = "isapi_only"
+	runtime, err := Compose(settings, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.UI.Protocol != "isapi_only" || runtime.Protocol != "isapi_only" {
+		t.Fatalf("UI protocol = %q, route protocol = %q", runtime.UI.Protocol, runtime.Protocol)
 	}
 }
 

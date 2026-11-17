@@ -13,6 +13,8 @@ import (
 	"net"
 	"net/netip"
 	"strings"
+
+	"github.com/CDSRaBot/sadp-handler.GO/internal/logic"
 )
 
 var ErrNotImplemented = errors.New("not implemented")
@@ -288,6 +290,9 @@ type ActivationSecurityMaterial struct {
 }
 
 func NewActivationSecurityMaterial(password string) (ActivationSecurityMaterial, error) {
+	if err := logic.ValidatePassword(password); err != nil {
+		return ActivationSecurityMaterial{}, &Error{Kind: ErrorInvalidInput, Err: err}
+	}
 	key, err := rsa.GenerateKey(rand.Reader, 1024)
 	if err != nil {
 		return ActivationSecurityMaterial{}, fmt.Errorf("generate activation key: %w", err)
@@ -301,8 +306,11 @@ func NewActivationSecurityMaterial(password string) (ActivationSecurityMaterial,
 }
 
 func BuildISAPIActivationPassword(material ActivationSecurityMaterial, challengeValue string) (string, error) {
-	if material.PrivateKey == nil || material.Password == "" {
+	if material.PrivateKey == nil {
 		return "", &Error{Kind: ErrorInvalidInput, Err: errors.New("activation key and password are required")}
+	}
+	if err := logic.ValidatePassword(material.Password); err != nil {
+		return "", &Error{Kind: ErrorInvalidInput, Err: err}
 	}
 	ciphertext, err := base64.StdEncoding.DecodeString(challengeValue)
 	if err != nil {

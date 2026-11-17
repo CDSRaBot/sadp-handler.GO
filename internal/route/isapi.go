@@ -340,21 +340,13 @@ func (t *ISAPIHTTPTransport) baseURL(target Target) (*url.URL, error) {
 }
 
 type securityChallengeRequest struct {
-	XMLName   xml.Name `xml:"SecurityChallenge"`
-	PublicKey string   `xml:"PublicKey>key"`
-}
-
-type securityChallengeResponse struct {
-	Challenge string `xml:"key"`
+	XMLName   xml.Name `xml:"PublicKey"`
+	PublicKey string   `xml:"key"`
 }
 
 type activateInfo struct {
 	XMLName  xml.Name `xml:"ActivateInfo"`
 	Password string   `xml:"password"`
-}
-
-type activationStatus struct {
-	Activated string `xml:"Activated"`
 }
 
 func (t *ISAPIHTTPTransport) Execute(ctx context.Context, operation Operation, target Target) (Result, error) {
@@ -394,11 +386,11 @@ func (t *ISAPIHTTPTransport) activate(ctx context.Context, base *url.URL, target
 	if err != nil {
 		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, err
 	}
-	var challenge securityChallengeResponse
-	if err := xml.Unmarshal(challengePayload, &challenge); err != nil || challenge.Challenge == "" {
+	challenge, err := parseUniqueDirectText(challengePayload, "Challenge", "key")
+	if err != nil || strings.TrimSpace(challenge) == "" {
 		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI challenge response is malformed")}
 	}
-	password, err := BuildISAPIActivationPassword(material, challenge.Challenge)
+	password, err := BuildISAPIActivationPassword(material, challenge)
 	if err != nil {
 		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, err
 	}
@@ -459,10 +451,10 @@ func validateISAPIResponseStatus(payload []byte) error {
 				rootSeen = true
 				continue
 			}
-			if depth != 2 || token.Name.Local != "statusCode" {
+			if token.Name.Local != "statusCode" {
 				continue
 			}
-			if statusSeen {
+			if depth != 2 || statusSeen {
 				return malformed()
 			}
 			statusSeen = true
@@ -488,14 +480,66 @@ func (t *ISAPIHTTPTransport) status(ctx context.Context, base *url.URL, target T
 	if err != nil {
 		return Result{Operation: OperationStatus, Target: target, Protocol: "isapi"}, err
 	}
-	var status activationStatus
-	if err := xml.Unmarshal(payload, &status); err != nil {
+	status, err := parseUniqueDirectText(payload, "", "Activated")
+	if err != nil {
 		return Result{Operation: OperationStatus, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI activation status is malformed")}
 	}
-	if !strings.EqualFold(strings.TrimSpace(status.Activated), "true") && status.Activated != "1" {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "true", "1":
+		return Result{Operation: OperationStatus, Target: target, Protocol: "isapi"}, nil
+	case "false", "0":
 		return Result{Operation: OperationStatus, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorVerification, Err: errors.New("activation verification failed")}
+	default:
+		return Result{Operation: OperationStatus, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI activation status is malformed")}
 	}
-	return Result{Operation: OperationStatus, Target: target, Protocol: "isapi"}, nil
+}
+
+func parseUniqueDirectText(payload []byte, root, field string) (string, error) {
+	decoder := xml.NewDecoder(bytes.NewReader(payload))
+	var value string
+	depth := 0
+	rootSeen, fieldSeen := false, false
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			if rootSeen && depth == 0 && fieldSeen {
+				return value, nil
+			}
+			return "", errors.New("missing XML root or field")
+		}
+		if err != nil {
+			return "", err
+		}
+		switch token := token.(type) {
+		case xml.CharData:
+			if depth == 0 && strings.TrimSpace(string(token)) != "" {
+				return "", errors.New("text outside XML root")
+			}
+		case xml.EndElement:
+			depth--
+		case xml.StartElement:
+			depth++
+			if depth == 1 {
+				if rootSeen || (root != "" && token.Name.Local != root) {
+					return "", errors.New("invalid XML root")
+				}
+				rootSeen = true
+				continue
+			}
+			if token.Name.Local != field {
+				continue
+			}
+			if depth != 2 || fieldSeen {
+				return "", errors.New("ambiguous XML field")
+			}
+			fieldSeen = true
+			value, err = decodeSimpleElement(decoder)
+			if err != nil {
+				return "", err
+			}
+			depth--
+		}
+	}
 }
 
 func (t *ISAPIHTTPTransport) request(ctx context.Context, method string, endpoint *url.URL, body []byte) ([]byte, error) {

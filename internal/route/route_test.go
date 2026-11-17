@@ -393,7 +393,7 @@ func TestSelectorRejectsNilContext(t *testing.T) {
 }
 
 func TestBuildISAPIActivationPasswordUsesSDKSecurityPipeline(t *testing.T) {
-	material, err := NewActivationSecurityMaterial("SyntheticPassword1!")
+	material, err := NewActivationSecurityMaterial("SyntheticPass1!")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,7 +416,7 @@ func TestBuildISAPIActivationPasswordUsesSDKSecurityPipeline(t *testing.T) {
 }
 
 func TestBuildISAPIActivationPasswordRejectsMalformedChallenge(t *testing.T) {
-	material, err := NewActivationSecurityMaterial("SyntheticPassword1!")
+	material, err := NewActivationSecurityMaterial("SyntheticPass1!")
 	if err != nil {
 		t.Fatal(err)
 	}

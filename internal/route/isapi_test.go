@@ -50,6 +50,9 @@ func TestISAPIHTTPTransportRunsActivationAndVerification(t *testing.T) {
 			if err := xml.NewDecoder(request.Body).Decode(&input); err != nil {
 				t.Fatal(err)
 			}
+			if input.XMLName.Local != "PublicKey" || input.PublicKey == "" {
+				t.Fatal("activation challenge must contain a PublicKey root and direct key field")
+			}
 
 			modulusBytes, err := base64.StdEncoding.DecodeString(input.PublicKey)
 			if err != nil {
@@ -79,9 +82,9 @@ func TestISAPIHTTPTransportRunsActivationAndVerification(t *testing.T) {
 	defer server.Close()
 
 	transport := &ISAPIHTTPTransport{
-		BaseURL: server.URL, Password: "SyntheticPassword1!",
+		BaseURL: server.URL, Password: "SyntheticPass1!",
 		Verifier: activationVerifierFunc(func(_ context.Context, target Target, password string) error {
-			verified = target.Address == serverTarget(t, server).Address && password == "SyntheticPassword1!"
+			verified = target.Address == serverTarget(t, server).Address && password == "SyntheticPass1!"
 			return nil
 		}),
 	}
@@ -105,7 +108,7 @@ func TestISAPIActivationRequiresVerifierBeforeRequests(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests++ }))
 	defer server.Close()
-	transport := &ISAPIHTTPTransport{BaseURL: server.URL, Password: "SyntheticPassword1!"}
+	transport := &ISAPIHTTPTransport{BaseURL: server.URL, Password: "SyntheticPass1!"}
 	_, err := transport.Execute(context.Background(), OperationActivation, serverTarget(t, server))
 	var routeErr *Error
 	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorUnsupported || requests != 0 {

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -37,5 +38,33 @@ func TestTUIModelRejectsUnsafeDiscoveryIdentity(t *testing.T) {
 	})
 	if len(model.discovered) != 0 || model.status != "received invalid discovery event" {
 		t.Fatalf("invalid event was accepted: %#v status=%q", model.discovered, model.status)
+	}
+}
+
+func TestTUIWaitDrainsDiscoveryChannelsBeforeFinishing(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		events := make(chan DiscoveredDevice, 1)
+		errs := make(chan error)
+		events <- DiscoveredDevice{MAC: "00:11:22:33:44:55"}
+		close(events)
+		close(errs)
+		model := NewTUIModel(context.Background(), NewTUIState(), Dependencies{})
+		model.session = snapshotSession{events, errs}
+		message := model.waitForDiscoveryEvent()().(tuiDiscoveryEventMsg)
+		if message.done || message.err != nil || message.device.MAC != "00:11:22:33:44:55" {
+			t.Fatalf("queued event was lost: %#v", message)
+		}
+	}
+	events := make(chan DiscoveredDevice)
+	errs := make(chan error, 1)
+	cause := errors.New("synthetic discovery error")
+	errs <- cause
+	close(events)
+	close(errs)
+	model := NewTUIModel(context.Background(), NewTUIState(), Dependencies{})
+	model.session = snapshotSession{events, errs}
+	message := model.waitForDiscoveryEvent()().(tuiDiscoveryEventMsg)
+	if !errors.Is(message.err, cause) || message.done {
+		t.Fatalf("queued error was lost: %#v", message)
 	}
 }

@@ -118,6 +118,7 @@ func (s *m6DiscoverySession) run(ctx context.Context, discover func(context.Cont
 		if !ok {
 			return nil
 		}
+		device.LastSeen = event.ObservedAt
 		select {
 		case s.events <- device:
 			return nil

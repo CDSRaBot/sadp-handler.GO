@@ -389,6 +389,9 @@ into the executable yet. It bounds a workflow to 60 seconds, limits the
 interface identifier to 64 safe ASCII characters and the mutation body to
 64 KiB, and records whether a mutation was attempted even when verification
 fails; an attempted mutation may or may not have reached the device.
+An available static-address locator retries bounded authenticated identity
+checks at the requested address. DHCP location remains unimplemented; neither
+the locator nor the workflow has been validated on physical devices.
 It reports a required restart without automatically issuing one. Its mutation
 transport obtains a Digest challenge with a safe GET before sending a
 credential-bearing write; devices that do not provide that challenge fail

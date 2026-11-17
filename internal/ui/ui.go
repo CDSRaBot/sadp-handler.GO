@@ -294,10 +294,15 @@ func dispatchDiscover(ctx context.Context, command DiscoverCommand, dependencies
 	}
 	devices, err := dependencies.Discovery.Discover(ctx, command.InterfaceIndex, command.Policy)
 	if err != nil {
+		var result CommandResult
+		var dispatchErr error
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return dispatchFailure("discover", FailureCanceled, "command canceled", err)
+			result, dispatchErr = dispatchFailure("discover", FailureCanceled, "command canceled", err)
+		} else {
+			result, dispatchErr = dispatchFailure("discover", FailureOperationFailed, "discovery failed", err)
 		}
-		return dispatchFailure("discover", FailureOperationFailed, "discovery failed", err)
+		result.Discovery = devices
+		return result, dispatchErr
 	}
 	return CommandResult{Command: "discover", OK: true, Discovery: devices}, nil
 }

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -145,7 +146,7 @@ func (m TUIModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tuiDiscoveryEventMsg:
 		if message.err != nil {
 			m.status = fmt.Sprintf("discovery failed: %v", message.err)
-			return m, nil
+			return m, m.waitForDiscoveryEvent()
 		}
 		if message.done {
 			m.status = "discovery stopped"
@@ -329,18 +330,27 @@ func (m TUIModel) waitForDiscoveryEvent() tea.Cmd {
 		return nil
 	}
 	return func() tea.Msg {
-		select {
-		case device, ok := <-session.Events():
-			if !ok {
-				return tuiDiscoveryEventMsg{done: true}
+		events, errs := session.Events(), session.Errors()
+		for events != nil || errs != nil {
+			select {
+			case device, ok := <-events:
+				if !ok {
+					events = nil
+					continue
+				}
+				return tuiDiscoveryEventMsg{device: device}
+			case err, ok := <-errs:
+				if !ok {
+					errs = nil
+					continue
+				}
+				if err != nil {
+					return tuiDiscoveryEventMsg{err: err}
+				}
+				return tuiDiscoveryEventMsg{err: errors.New("discovery session returned an empty error")}
 			}
-			return tuiDiscoveryEventMsg{device: device}
-		case err, ok := <-session.Errors():
-			if !ok || err == nil {
-				return tuiDiscoveryEventMsg{done: true}
-			}
-			return tuiDiscoveryEventMsg{err: err}
 		}
+		return tuiDiscoveryEventMsg{done: true}
 	}
 }
 

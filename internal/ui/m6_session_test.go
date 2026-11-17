@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/CDSRaBot/sadp-handler.GO/internal/adapter"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/discovery"
@@ -17,6 +18,7 @@ func TestM6DiscoverySessionResolvesInterfaceAndStreamsDevices(t *testing.T) {
 		Index: 2, Name: "eth0", Flags: net.FlagUp,
 		IPv4Addrs: []netip.Prefix{netip.MustParsePrefix("192.0.2.10/24")},
 	}
+	observedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	service := M6DiscoverySessionService{
 		ListInterfaces: func() ([]adapter.Interface, error) { return []adapter.Interface{iface}, nil },
 		Discover: func(ctx context.Context, got adapter.Interface, options discovery.DiscoveryOptions, handle discovery.EventHandler) error {
@@ -24,7 +26,8 @@ func TestM6DiscoverySessionResolvesInterfaceAndStreamsDevices(t *testing.T) {
 				t.Fatalf("unexpected discovery inputs: %#v %#v", got, options)
 			}
 			return handle(ctx, discovery.Event{
-				Kind: discovery.DeviceFound,
+				Kind:       discovery.DeviceFound,
+				ObservedAt: observedAt,
 				Device: &parser.Device{
 					MAC:    net.HardwareAddr{0, 17, 34, 51, 68, 85},
 					IPv4:   netip.MustParseAddr("192.0.2.20"),
@@ -41,7 +44,7 @@ func TestM6DiscoverySessionResolvesInterfaceAndStreamsDevices(t *testing.T) {
 		t.Fatal(err)
 	}
 	device, ok := <-session.Events()
-	if !ok || device.MAC != "00:11:22:33:44:55" || device.Sender != "192.0.2.1:37020" {
+	if !ok || device.MAC != "00:11:22:33:44:55" || device.Sender != "192.0.2.1:37020" || !device.LastSeen.Equal(observedAt) {
 		t.Fatalf("unexpected streamed device: %#v, %t", device, ok)
 	}
 }

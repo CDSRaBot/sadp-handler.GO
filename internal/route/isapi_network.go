@@ -46,12 +46,8 @@ func (w ISAPINetworkWorkflow) Configure(ctx context.Context, target Target, inte
 		target.Interface != "" || !validISAPIInterfaceID(interfaceID) {
 		return result, &Error{Kind: ErrorInvalidInput, Err: errors.New("ISAPI network workflow arguments are incomplete")}
 	}
-	if err := logic.ValidateNetworkConfig(plan); err != nil {
-		return result, &Error{Kind: ErrorInvalidInput, Err: errors.New("ISAPI network plan is invalid")}
-	}
-	if !plan.UseDHCP && (!plan.Address.Addr().IsGlobalUnicast() || !plan.Gateway.IsGlobalUnicast() ||
-		!plan.Address.Contains(plan.Gateway) || plan.Address.Addr() == plan.Gateway) {
-		return result, &Error{Kind: ErrorInvalidInput, Err: errors.New("ISAPI static network plan is inconsistent")}
+	if !validISAPINetworkPlan(plan) {
+		return result, &Error{Kind: ErrorInvalidInput, Err: errors.New("ISAPI network plan is invalid or inconsistent")}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
@@ -127,6 +123,14 @@ func (w ISAPINetworkWorkflow) Configure(ctx context.Context, target Target, inte
 	}
 	result.Verified = true
 	return result, nil
+}
+
+func validISAPINetworkPlan(plan logic.NetworkConfig) bool {
+	if logic.ValidateNetworkConfig(plan) != nil {
+		return false
+	}
+	return plan.UseDHCP || (plan.Address.Addr().IsGlobalUnicast() && plan.Gateway.IsGlobalUnicast() &&
+		plan.Address.Contains(plan.Gateway) && plan.Address.Addr() != plan.Gateway)
 }
 
 func validISAPIInterfaceID(value string) bool {

@@ -90,6 +90,7 @@ func Compose(settings config.Settings, baseDir string) (RuntimeConfig, error) {
 			Format:   settings.UI.Format,
 			Language: settings.UI.Language,
 			Once:     settings.UI.Once,
+			Protocol: settings.Protocol.Strategy,
 		},
 		Localization: LocalizationRuntimeConfig{FS: localizationFS},
 		Network: adapter.MulticastOptions{
