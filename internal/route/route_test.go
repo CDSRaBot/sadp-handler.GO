@@ -72,12 +72,54 @@ func TestSADPSuccessPreventsFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := selector.Execute(context.Background(), OperationActivation, testTarget())
+	result, err := selector.Execute(context.Background(), OperationNetwork, testTarget())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Protocol != "sadp" || sadp.calls != 1 || isapi.calls != 0 {
 		t.Fatalf("unexpected route: result=%+v sadp=%d isapi=%d", result, sadp.calls, isapi.calls)
+	}
+}
+
+func TestDisabledSADPActivationUsesGatedISAPI(t *testing.T) {
+	tests := []struct {
+		name        string
+		reachable   bool
+		supported   bool
+		wantErr     ErrorKind
+		wantISAPI   int
+		wantCapCall int
+	}{
+		{name: "supported", reachable: true, supported: true, wantISAPI: 1, wantCapCall: 1},
+		{name: "no route", wantErr: ErrorNoRoute},
+		{name: "unsupported", reachable: true, wantErr: ErrorUnsupported, wantCapCall: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sadp := &fakeTransport{}
+			isapi := &fakeTransport{result: Result{Protocol: "isapi"}}
+			caps := &fakeCapabilities{ok: tt.supported}
+			selector, err := NewSelector(StrategySADPFirst, Dependencies{
+				SADP: sadp, ISAPI: isapi, Routes: &fakeRoutes{ok: tt.reachable}, Capability: caps,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := selector.Execute(context.Background(), OperationActivation, testTarget())
+			if tt.wantErr == "" {
+				if err != nil || result.Protocol != "isapi" || result.Fallback != FallbackEligible {
+					t.Fatalf("result = %#v, err = %v", result, err)
+				}
+			} else {
+				var routeErr *Error
+				if !errors.As(err, &routeErr) || routeErr.Kind != tt.wantErr {
+					t.Fatalf("error = %v, want %s", err, tt.wantErr)
+				}
+			}
+			if sadp.calls != 0 || isapi.calls != tt.wantISAPI || caps.calls != tt.wantCapCall {
+				t.Fatalf("calls: SADP=%d ISAPI=%d capabilities=%d", sadp.calls, isapi.calls, caps.calls)
+			}
+		})
 	}
 }
 
@@ -144,7 +186,7 @@ func TestRejectionNeverFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = selector.Execute(context.Background(), OperationActivation, testTarget())
+	_, err = selector.Execute(context.Background(), OperationNetwork, testTarget())
 	var routeErr *Error
 	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorRejected {
 		t.Fatalf("expected rejection, got %v", err)
@@ -161,7 +203,7 @@ func TestAuthenticationFailureNeverFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = selector.Execute(context.Background(), OperationActivation, testTarget())
+	_, err = selector.Execute(context.Background(), OperationNetwork, testTarget())
 	var routeErr *Error
 	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorAuthentication {
 		t.Fatalf("expected authentication error, got %v", err)

@@ -38,37 +38,18 @@ func serviceTarget(mac net.HardwareAddr) logic.MutationTarget {
 	}
 }
 
-func TestWorkflowActivationServiceMapsAcceptedAndRejectedOutcomes(t *testing.T) {
+func TestWorkflowActivationServiceDisablesSADPBeforeReadingPassword(t *testing.T) {
 	first := net.HardwareAddr{0, 17, 34, 51, 68, 85}
-	second := net.HardwareAddr{170, 187, 204, 221, 238, 255}
 	service := ui.WorkflowActivationService{
-		Targets: serviceTargetResolver{targets: map[string]logic.MutationTarget{
-			first.String():  serviceTarget(first),
-			second.String(): serviceTarget(second),
-		}},
-		Passwords: servicePasswordProvider{password: "ValidPass1!"},
-		Workflow: logic.MutationWorkflow{
-			Transport: serviceTransport{},
-			Parser: serviceParser{parse: func(operation logic.MutationOperation, target logic.MutationTarget, _ net.Addr, _ []byte) (logic.MutationDecision, error) {
-				status := logic.MutationAccepted
-				if target.MAC.String() == second.String() {
-					status = logic.MutationRejected
-				}
-				return logic.MutationDecision{Operation: operation, Target: target, Status: status}, nil
-			}},
-		},
+		Targets: serviceTargetResolver{targets: map[string]logic.MutationTarget{first.String(): serviceTarget(first)}},
 	}
 
 	outcomes, err := service.Activate(context.Background(), ui.ActivateCommand{
-		Targets:       ui.TargetSelector{MACs: []net.HardwareAddr{first, second}, UseTUISelection: true},
+		Targets:       ui.TargetSelector{MACs: []net.HardwareAddr{first}},
 		PasswordInput: ui.PasswordFromStdin,
-		Confirm:       true,
 	})
-	if err != nil {
-		t.Fatalf("Activate() error = %v", err)
-	}
-	if len(outcomes) != 2 || outcomes[0].Status != "accepted" || outcomes[1].Status != "rejected" {
-		t.Fatalf("outcomes = %#v", outcomes)
+	if !errors.Is(err, ui.ErrSADPActivationDisabled) || len(outcomes) != 0 {
+		t.Fatalf("outcomes = %#v, error = %v", outcomes, err)
 	}
 }
 
@@ -76,8 +57,9 @@ func TestWorkflowNetworkServicePreservesPartialResolutionFailure(t *testing.T) {
 	first := net.HardwareAddr{0, 17, 34, 51, 68, 85}
 	second := net.HardwareAddr{170, 187, 204, 221, 238, 255}
 	service := ui.WorkflowNetworkService{
-		Targets:   serviceTargetResolver{targets: map[string]logic.MutationTarget{first.String(): serviceTarget(first)}},
-		Passwords: servicePasswordProvider{password: "ValidPass1!"},
+		Targets:         serviceTargetResolver{targets: map[string]logic.MutationTarget{first.String(): serviceTarget(first)}},
+		Passwords:       servicePasswordProvider{password: "ValidPass1!"},
+		ProfileVerifier: serviceProfileVerifier{},
 		Workflow: logic.MutationWorkflow{
 			ChallengeProvider: serviceChallengeProvider{target: serviceTarget(first)},
 			NetworkVerifier:   serviceNetworkVerifier{},
@@ -99,6 +81,23 @@ func TestWorkflowNetworkServicePreservesPartialResolutionFailure(t *testing.T) {
 	}
 	if outcomes[0].Status != "accepted" || outcomes[1].Status != "failed" {
 		t.Fatalf("outcomes = %#v", outcomes)
+	}
+}
+
+type serviceProfileVerifier struct{}
+
+func (serviceProfileVerifier) VerifyNetworkProfile(context.Context, logic.MutationTarget) error {
+	return nil
+}
+
+func TestWorkflowNetworkServiceRequiresVerifiedProfile(t *testing.T) {
+	service := ui.WorkflowNetworkService{
+		Targets:   serviceTargetResolver{},
+		Passwords: servicePasswordProvider{password: "ValidPass1!"},
+	}
+	_, err := service.ConfigureNetwork(context.Background(), ui.NetworkCommand{})
+	if !errors.Is(err, ui.ErrSADPNetworkProfileUnverified) {
+		t.Fatalf("error = %v, want explicit missing profile error", err)
 	}
 }
 

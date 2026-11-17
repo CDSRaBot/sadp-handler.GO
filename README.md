@@ -1,10 +1,10 @@
 # SADP-handler
 
-SADP-handler is a planned Go command-line utility for discovering, activating, and configuring Hikvision devices over the Search Active Device Protocol (SADP).
+SADP-handler is a Go terminal utility for discovering Hikvision devices over SADP, with device activation and configuration workflows in development.
 
 ## Project status
 
-The repository currently contains design documentation; Go implementation has not started. The local Python reference is documented as a behavioral baseline, while protocol compatibility gates remain open. Generic HTTP/JSON starter files were removed because they did not implement the specified SADP system. See the system specification for reference behavior and unresolved protocol details.
+The Go implementation includes discovery and protocol components. SADP activation is disabled; the intended ISAPI activation and network configuration workflows are not yet wired into the executable. Real-device and platform compatibility gates remain open. See the [beta plan](./docs/BETA_PLAN.md) and system specification.
 
 ## Design
 

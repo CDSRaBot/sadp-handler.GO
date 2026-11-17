@@ -51,9 +51,11 @@ composition.
 ## 3. Selection rules
 
 `sadp_first` is the default. `isapi_only` never attempts SADP. In
-`sadp_first`, fallback is per target and operation and is allowed only after a
-classified SADP-unavailable result, an existing route to the target, and
-capability confirmation for the requested ISAPI operation.
+`sadp_first`, activation skips SADP because SADP activation is disabled. It
+may use ISAPI after an existing route and operation capability are confirmed.
+For other operations, fallback is per target and operation and is allowed
+only after a classified SADP-unavailable result, an existing route to the
+target, and capability confirmation for the requested ISAPI operation.
 
 Device rejection, invalid credentials, authentication failure, malformed or
 uncorrelated responses, identity mismatch, cancellation, deadline expiration,

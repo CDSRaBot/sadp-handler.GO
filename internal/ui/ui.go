@@ -307,9 +307,15 @@ func dispatchActivate(ctx context.Context, command ActivateCommand, dependencies
 		return dispatchFailure("activate", FailureInvalidArgument, "invalid activation command", err)
 	}
 	if dependencies.Activation == nil {
+		if dependencies.Config.Protocol != "isapi_only" {
+			return dispatchFailure("activate", FailureUnsupported, ErrSADPActivationDisabled.Error(), ErrSADPActivationDisabled)
+		}
 		return dispatchUnsupported("activate")
 	}
 	outcomes, err := dependencies.Activation.Activate(ctx, command)
+	if errors.Is(err, ErrSADPActivationDisabled) {
+		return mutationFailure("activate", FailureUnsupported, ErrSADPActivationDisabled.Error(), outcomes, err)
+	}
 	return dispatchMutationResult(ctx, "activate", command.Targets, outcomes, err)
 }
 
@@ -321,6 +327,9 @@ func dispatchNetwork(ctx context.Context, command NetworkCommand, dependencies D
 		return dispatchUnsupported("network")
 	}
 	outcomes, err := dependencies.Network.ConfigureNetwork(ctx, command)
+	if errors.Is(err, ErrSADPNetworkProfileUnverified) {
+		return mutationFailure("network", FailureUnsupported, ErrSADPNetworkProfileUnverified.Error(), outcomes, err)
+	}
 	return dispatchMutationResult(ctx, "network", command.Targets, outcomes, err)
 }
 

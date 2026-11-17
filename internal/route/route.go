@@ -43,6 +43,7 @@ const (
 	ErrorRejected        ErrorKind = "device_rejected"
 	ErrorAuthentication  ErrorKind = "authentication"
 	ErrorMalformed       ErrorKind = "malformed_response"
+	ErrorTransport       ErrorKind = "transport"
 	ErrorTimeout         ErrorKind = "timeout"
 	ErrorCanceled        ErrorKind = "canceled"
 	ErrorVerification    ErrorKind = "verification"
@@ -157,14 +158,22 @@ func (s *Selector) Execute(ctx context.Context, operation Operation, target Targ
 	if !target.Address.IsValid() {
 		return Result{Operation: operation, Target: target}, &Error{Kind: ErrorInvalidInput, Err: errors.New("target address is required")}
 	}
-	if s.strategy == StrategyISAPIOnly {
+	if s.strategy == StrategyISAPIOnly || operation == OperationActivation {
+		fallback := FallbackNotAllowed
+		if s.strategy == StrategySADPFirst {
+			fallback = FallbackEligible
+		}
+		if s.deps.ISAPI == nil {
+			return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: fallback},
+				&Error{Kind: ErrorUnsupported, Err: errors.New("SADP activation is disabled and ISAPI transport is unavailable")}
+		}
 		if s.deps.Routes == nil || s.deps.Capability == nil {
-			return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: FallbackNotAllowed},
+			return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: fallback},
 				&Error{Kind: ErrorInvalidInput, Err: errors.New("route and capability providers are required")}
 		}
 		reachable, routeErr := s.deps.Routes.CanReach(ctx, target.Address, target.Interface)
 		if routeErr != nil {
-			return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: FallbackNotAllowed, Err: routeErr}, contextError(routeErr)
+			return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: fallback, Err: routeErr}, contextError(routeErr)
 		}
 		if !reachable {
 			return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: FallbackRouteUnavailable},
@@ -172,13 +181,13 @@ func (s *Selector) Execute(ctx context.Context, operation Operation, target Targ
 		}
 		supported, capabilityErr := s.deps.Capability.Supports(ctx, target, operation)
 		if capabilityErr != nil {
-			return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: FallbackNotAllowed, Err: capabilityErr}, contextError(capabilityErr)
+			return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: fallback, Err: capabilityErr}, contextError(capabilityErr)
 		}
 		if !supported {
-			return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: FallbackNotAllowed},
+			return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: fallback},
 				&Error{Kind: ErrorUnsupported, Err: errors.New("ISAPI operation unsupported")}
 		}
-		return s.executeISAPI(ctx, operation, target, FallbackNotAllowed)
+		return s.executeISAPI(ctx, operation, target, fallback)
 	}
 	sadpResult, err := s.deps.SADP.Execute(ctx, operation, target)
 	if err == nil {

@@ -12,23 +12,23 @@ DS-2CD1021-I, прошивка V5.5.801 build 210701. Дополнительно
 Использованы:
 
 - сетевой перехват
-  [SADP-Activation-Net-DHCP-HC.txt](../../../../../HikSDK/Hikvision_sdk/SADP-Activation-Net-DHCP-HC.txt);
+  `SADP-Activation-Net-DHCP-HC.txt` (локальный материал, не включён в репозиторий);
 - лог SADP SDK
-  [SdkLog_20261028_214108754_w.log](../../../../../HikSDK/Hikvision_sdk/SdkLog_20261028_214108754_w.log);
+  `SdkLog_20261028_214108754_w.log` (локальный материал, не включён в репозиторий);
 - лог зависимого OTAPDCM SDK
-  [OTAPDCM_20261028_214108928_w.log](../../../../../HikSDK/Hikvision_sdk/OTAPDCM_20261028_214108928_w.log);
+  `OTAPDCM_20261028_214108928_w.log` (локальный материал, не включён в репозиторий);
 - текущая Go-спецификация SADP/ISAPI
   [SADP_ISAPI_TRUSTED_PIPELINES.md](../procedures/SADP_ISAPI_TRUSTED_PIPELINES.md);
 - текущая реализация сетевого транспорта
-  [mutation_transport.go](../../../internal/network/mutation_transport.go);
+  [mutation_transport.go](../../../../internal/network/mutation_transport.go);
 - текущая реализация XML-билдеров
-  [build_activation_xml.go](../../../internal/logic/build_activation_xml.go);
+  [build_activation_xml.go](../../../../internal/logic/build_activation_xml.go);
 - текущий SADP-парсер
-  [parser.go](../../../internal/parser/parser.go).
+  [parser.go](../../../../internal/parser/parser.go).
 - дополнительные сетевые трассы и логи SDK из
   [SadpLog.zip](../../../../../SadpLog.zip).
 - сетевой перехват успешной активации и последующих изменений IP
-  [SADP-Activation success + IP modification.txt](../../../../../SADP-Activation%20success%20%2B%20IP%20modification.txt)
+  `SADP-Activation success + IP modification.txt` (локальный материал, не включён в репозиторий)
   (3479 строк; устройство MAC `08-3b-c1-21-15-16`);
 - лог SDK для этого сеанса
   [SdkLog_20261112_174917417_w.log](../../../../../SdkLog_20261112_174917417_w.log).
@@ -729,7 +729,7 @@ DHCP=true
 
 ### 10.4. Несоответствие текущего парсера
 
-Текущий [ParseAdvertisement](../../../internal/parser/parser.go)
+Текущий [ParseAdvertisement](../../../../internal/parser/parser.go)
 отвергает `0.0.0.0`. Это нужно изменить с учётом `DHCP=true`, сохранив
 строгую проверку для обычного `DHCP=false`.
 
@@ -815,7 +815,7 @@ sequenceDiagram
 `bSalt` и `PWErrorParse` отсутствуют, а защищённое поле имеет другой размер:
 32 байта после Base64-декодирования против 64 байт для `update`.
 
-В текущей Go-реализации [BuildNetworkXML](../../../internal/logic/build_activation_xml.go)
+В текущей Go-реализации [BuildNetworkXML](../../../../internal/logic/build_activation_xml.go)
 используется:
 
 ```xml
@@ -851,7 +851,7 @@ AES-128-ECB преобразование ключевого блока и UUID-�
 
 ## 13. Требования к корреляции и приёму
 
-Текущий транспорт [SADPMutationTransport](../../../internal/network/mutation_transport.go)
+Текущий транспорт [SADPMutationTransport](../../../../internal/network/mutation_transport.go)
 читает один первый ответ. Для исследованного поведения этого недостаточно.
 
 Нужен цикл:

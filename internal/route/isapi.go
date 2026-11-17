@@ -7,20 +7,62 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const defaultISAPIResponseLimit = 64 * 1024
+const defaultISAPIRequestTimeout = 10 * time.Second
 
 type ISAPIHTTPTransport struct {
 	Client           *http.Client
 	BaseURL          string
 	MaxResponseBytes int64
+	Username         string
 	Password         string
+	Verifier         ISAPIActivationVerifier
+}
+
+type ISAPIActivationVerifier interface {
+	VerifyActivation(context.Context, Target, string) error
+}
+
+type ISAPIDeviceInfoVerifier struct {
+	Transport *ISAPIHTTPTransport
+}
+
+func (v ISAPIDeviceInfoVerifier) VerifyActivation(ctx context.Context, target Target, password string) error {
+	if v.Transport == nil || v.Transport.Username == "" || len(target.MAC) != 6 || password == "" {
+		return &Error{Kind: ErrorInvalidInput, Err: errors.New("device identity and credentials are required")}
+	}
+	transport := *v.Transport
+	transport.Password = password
+	base, err := transport.baseURL(target)
+	if err != nil {
+		return err
+	}
+	endpoint := base.ResolveReference(&url.URL{Path: "/ISAPI/System/deviceInfo"})
+	payload, err := transport.requestWithPolicy(ctx, http.MethodGet, endpoint, nil, true)
+	if err != nil {
+		return err
+	}
+	var info struct {
+		XMLName    xml.Name `xml:"DeviceInfo"`
+		MACAddress string   `xml:"macAddress"`
+	}
+	if err := xml.Unmarshal(payload, &info); err != nil {
+		return &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI device information is malformed")}
+	}
+	mac, err := net.ParseMAC(strings.TrimSpace(info.MACAddress))
+	if err != nil || len(mac) != 6 || !bytes.Equal(mac, target.MAC) {
+		return &Error{Kind: ErrorVerification, Err: errors.New("ISAPI device identity did not match")}
+	}
+	return nil
 }
 
 // ISAPIRouteProvider and ISAPICapabilityProvider are deliberately thin
@@ -56,7 +98,7 @@ func (p ISAPICapabilityProvider) Supports(ctx context.Context, target Target, op
 }
 
 func (t *ISAPIHTTPTransport) probe(ctx context.Context, target Target) ([]byte, error) {
-	base, err := t.baseURL()
+	base, err := t.baseURL(target)
 	if err != nil {
 		return nil, err
 	}
@@ -118,11 +160,22 @@ func (t *ISAPIHTTPTransport) LookupCapabilities(ctx context.Context, target Targ
 	return profile, nil
 }
 
-func (t *ISAPIHTTPTransport) baseURL() (*url.URL, error) {
+func (t *ISAPIHTTPTransport) baseURL(target Target) (*url.URL, error) {
 	base, err := url.Parse(strings.TrimRight(t.BaseURL, "/"))
 	if err != nil || base.Scheme == "" || base.Host == "" ||
-		(base.Scheme != "http" && base.Scheme != "https") {
+		(base.Scheme != "http" && base.Scheme != "https") ||
+		base.User != nil || base.Path != "" || base.RawQuery != "" || base.Fragment != "" {
 		return nil, &Error{Kind: ErrorInvalidInput, Err: errors.New("valid ISAPI base URL is required")}
+	}
+	if !target.Address.IsValid() || target.Address.IsUnspecified() || target.Address.IsMulticast() {
+		return nil, &Error{Kind: ErrorInvalidInput, Err: errors.New("valid unicast target address is required")}
+	}
+	if port := base.Port(); port != "" {
+		base.Host = net.JoinHostPort(target.Address.String(), port)
+	} else if target.Address.Is6() {
+		base.Host = "[" + target.Address.String() + "]"
+	} else {
+		base.Host = target.Address.String()
 	}
 	return base, nil
 }
@@ -145,11 +198,16 @@ type activationStatus struct {
 	Activated string `xml:"Activated"`
 }
 
+type responseStatus struct {
+	XMLName    xml.Name `xml:"ResponseStatus"`
+	StatusCode string   `xml:"statusCode"`
+}
+
 func (t *ISAPIHTTPTransport) Execute(ctx context.Context, operation Operation, target Target) (Result, error) {
 	if !target.Address.IsValid() {
 		return Result{Operation: operation, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorInvalidInput, Err: errors.New("target address is required")}
 	}
-	base, err := t.baseURL()
+	base, err := t.baseURL(target)
 	if err != nil {
 		return Result{Operation: operation, Target: target, Protocol: "isapi"}, err
 	}
@@ -163,6 +221,9 @@ func (t *ISAPIHTTPTransport) Execute(ctx context.Context, operation Operation, t
 }
 
 func (t *ISAPIHTTPTransport) activate(ctx context.Context, base *url.URL, target Target) (Result, error) {
+	if t.Verifier == nil {
+		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorUnsupported, Err: errors.New("ISAPI activation identity verifier is required")}
+	}
 	material, err := NewActivationSecurityMaterial(t.Password)
 	if err != nil {
 		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, err
@@ -189,7 +250,11 @@ func (t *ISAPIHTTPTransport) activate(ctx context.Context, base *url.URL, target
 		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorMalformed, Err: err}
 	}
 	activateURL := base.ResolveReference(&url.URL{Path: "/ISAPI/System/activate"})
-	if _, err := t.request(ctx, http.MethodPut, activateURL, activationPayload); err != nil {
+	response, err := t.request(ctx, http.MethodPut, activateURL, activationPayload)
+	if err != nil {
+		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, err
+	}
+	if err := validateISAPIResponseStatus(response); err != nil {
 		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, err
 	}
 	status, err := t.status(ctx, base, target)
@@ -198,7 +263,21 @@ func (t *ISAPIHTTPTransport) activate(ctx context.Context, base *url.URL, target
 		return status, err
 	}
 	status.Operation = OperationActivation
+	if err := t.Verifier.VerifyActivation(ctx, target, t.Password); err != nil {
+		return status, &Error{Kind: ErrorVerification, Err: err}
+	}
 	return status, nil
+}
+
+func validateISAPIResponseStatus(payload []byte) error {
+	var response responseStatus
+	if err := xml.Unmarshal(payload, &response); err != nil || strings.TrimSpace(response.StatusCode) == "" {
+		return &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI response status is malformed")}
+	}
+	if strings.TrimSpace(response.StatusCode) != "1" {
+		return &Error{Kind: ErrorRejected, Err: errors.New("ISAPI operation was rejected")}
+	}
+	return nil
 }
 
 func (t *ISAPIHTTPTransport) status(ctx context.Context, base *url.URL, target Target) (Result, error) {
@@ -218,6 +297,10 @@ func (t *ISAPIHTTPTransport) status(ctx context.Context, base *url.URL, target T
 }
 
 func (t *ISAPIHTTPTransport) request(ctx context.Context, method string, endpoint *url.URL, body []byte) ([]byte, error) {
+	return t.requestWithPolicy(ctx, method, endpoint, body, false)
+}
+
+func (t *ISAPIHTTPTransport) requestWithPolicy(ctx context.Context, method string, endpoint *url.URL, body []byte, requireAuthentication bool) ([]byte, error) {
 	request, err := http.NewRequestWithContext(ctx, method, endpoint.String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, &Error{Kind: ErrorInvalidInput, Err: err}
@@ -229,17 +312,64 @@ func (t *ISAPIHTTPTransport) request(ctx context.Context, method string, endpoin
 	if client == nil {
 		client = http.DefaultClient
 	}
+	boundedClient := *client
+	if boundedClient.Timeout <= 0 {
+		boundedClient.Timeout = defaultISAPIRequestTimeout
+	}
+	boundedClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	status, headers, payload, err := t.performRequest(ctx, &boundedClient, request)
+	if err != nil {
+		return nil, err
+	}
+	if requireAuthentication && status != http.StatusUnauthorized {
+		return nil, &Error{Kind: ErrorAuthentication, Err: errors.New("ISAPI Digest authentication challenge is required")}
+	}
+	if status == http.StatusUnauthorized && t.Username != "" {
+		authorization, authErr := digestAuthorization(headers.Values("WWW-Authenticate"), request, t.Username, t.Password)
+		if authErr != nil {
+			return nil, &Error{Kind: ErrorAuthentication, Err: authErr}
+		}
+		retry := request.Clone(ctx)
+		if request.GetBody != nil {
+			retry.Body, err = request.GetBody()
+			if err != nil {
+				return nil, &Error{Kind: ErrorTransport, Err: errors.New("ISAPI request body cannot be replayed")}
+			}
+		}
+		retry.Header.Set("Authorization", authorization)
+		status, _, payload, err = t.performRequest(ctx, &boundedClient, retry)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return nil, &Error{Kind: ErrorAuthentication, Err: fmt.Errorf("ISAPI HTTP status %s", strconv.Itoa(status))}
+	}
+	if status < 200 || status >= 300 {
+		return nil, &Error{Kind: ErrorRejected, Err: fmt.Errorf("ISAPI HTTP status %s", strconv.Itoa(status))}
+	}
+	return payload, nil
+}
+
+func (t *ISAPIHTTPTransport) performRequest(ctx context.Context, client *http.Client, request *http.Request) (int, http.Header, []byte, error) {
 	response, err := client.Do(request)
 	if err != nil {
-		kind := ErrorTimeout
+		kind := ErrorTransport
 		if errors.Is(ctx.Err(), context.Canceled) {
 			kind = ErrorCanceled
 			err = ctx.Err()
 		} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			kind = ErrorTimeout
 			err = ctx.Err()
+		} else {
+			var networkErr net.Error
+			if errors.As(err, &networkErr) && networkErr.Timeout() {
+				kind = ErrorTimeout
+			}
 		}
-		return nil, &Error{Kind: kind, Err: err}
+		return 0, nil, nil, &Error{Kind: kind, Err: err}
 	}
 	defer response.Body.Close()
 	limit := t.MaxResponseBytes
@@ -248,16 +378,13 @@ func (t *ISAPIHTTPTransport) request(ctx context.Context, method string, endpoin
 	}
 	payload, readErr := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if readErr != nil {
-		return nil, &Error{Kind: ErrorMalformed, Err: readErr}
+		if ctx.Err() != nil {
+			return 0, nil, nil, contextError(ctx.Err())
+		}
+		return 0, nil, nil, &Error{Kind: ErrorMalformed, Err: readErr}
 	}
 	if int64(len(payload)) > limit {
-		return nil, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI response exceeds configured limit")}
+		return 0, nil, nil, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI response exceeds configured limit")}
 	}
-	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return nil, &Error{Kind: ErrorAuthentication, Err: fmt.Errorf("ISAPI HTTP status %s", strconv.Itoa(response.StatusCode))}
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, &Error{Kind: ErrorRejected, Err: fmt.Errorf("ISAPI HTTP status %s", strconv.Itoa(response.StatusCode))}
-	}
-	return payload, nil
+	return response.StatusCode, response.Header.Clone(), payload, nil
 }

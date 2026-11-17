@@ -126,6 +126,8 @@ func classifyRoute(kind route.ErrorKind) Code {
 		return Authentication
 	case route.ErrorMalformed:
 		return MalformedResponse
+	case route.ErrorTransport:
+		return Transport
 	case route.ErrorTimeout:
 		return Timeout
 	case route.ErrorCanceled:

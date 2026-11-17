@@ -2,7 +2,7 @@
 
 [Русская версия](ru/HELP.md)
 
-This document describes the user commands and options defined by the project specifications. The Go implementation has not started yet. The `activate` and `network` end-to-end workflows are not implemented and must fail explicitly without reading passwords or performing network operations until their result handling and cancellation contracts are implemented. Activation uses the accepted SADP XML request addressed by MAC; it is not an ISAPI HTTP operation.
+This document describes the user commands and options defined by the project specifications. Discovery is implemented. The executable does not yet wire end-to-end `activate` and `network` services, so these commands fail explicitly without reading passwords or performing network operations. SADP activation is disabled; the planned ISAPI replacement is not yet available in the executable.
 
 ## Starting the application
 
@@ -50,7 +50,7 @@ activate --device MAC [--device MAC ...] --password-stdin [--email EMAIL] [--yes
 
 Request activation of one or more devices.
 
-- Activation uses the selected SADP XML request addressed by target MAC; it is not an ISAPI HTTP request.
+- SADP activation is disabled. ISAPI activation is planned but is not yet wired into the executable.
 - `--device MAC` specifies a target EUI-48 MAC address. This option may be repeated; duplicates after normalization are rejected.
 - `--password-stdin` selects stdin as the password source. In the REPL, input must not echo characters; in one-shot mode, one line is read. Do not pass the password as a command argument.
 - `--email EMAIL` is an optional email address for the activation operation.

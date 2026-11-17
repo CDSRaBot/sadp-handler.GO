@@ -17,9 +17,11 @@ operation fails.
 
 1. Reject invalid strategy, operation, or target before network I/O.
 2. For `isapi_only`, check route and capability, then execute ISAPI only.
-3. For `sadp_first`, execute SADP first.
-4. Consider ISAPI only when SADP returns a classified unavailable reason,
-   route reachability is confirmed, and the requested capability is enabled.
+3. SADP activation is disabled. For activation under `sadp_first`, do not
+   execute SADP; check reachability and capability before attempting ISAPI.
+4. For other `sadp_first` operations, execute SADP first. Consider ISAPI only
+   when SADP returns a classified unavailable reason, route reachability is
+   confirmed, and the requested capability is enabled.
 5. Never fallback after rejection, authentication failure, malformed or
    mismatched response, cancellation, deadline, or verification failure.
 6. Preserve `errors.Is` for context cancellation/deadline and close resources
@@ -33,4 +35,5 @@ are never returned or logged.
 For `OperationActivation`, an ISAPI attempt implements the required SDK
 RSA-1024/65537 challenge and AES-128-ECB procedure. It is not selected by a
 cryptographic capability gate; malformed challenge/security data is a terminal
-error.
+error. The activation transport requires an identity verifier before sending a
+mutation. The executable does not yet supply one or expose ISAPI activation.

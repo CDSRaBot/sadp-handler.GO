@@ -2,20 +2,20 @@
 
 ## 1. Purpose and Status
 
-**SADP-handler** is a terminal-based Go utility for discovering, activating, and configuring Hikvision cameras and NVRs over the Search Active Device Protocol (SADP). Discovery targets devices on the local Layer 2 network, including devices that do not yet have an address usable by the host.
+**SADP-handler** is a terminal-based Go utility for discovering Hikvision cameras and NVRs over SADP, with activation and configuration through supported device protocols. Discovery targets devices on the local Layer 2 network, including devices that do not yet have an address usable by the host.
 
-The architecture baseline is established and the specifications define system boundaries, module APIs, and atomic procedures. The Python implementation is the verified behavioral baseline for discovery: it has been tested with real devices, finds them, and receives their responses. The Go implementation now contains the core discovery, configuration, logic, UI, and route components and must preserve this behavior through repository and real-device validation. SADP activation identifies its target by MAC address and uses the SADP XML request defined by M3. The `SHA-256(UTF-8(password + challenge))` challenge-response calculation is accepted as verified by practical experiments. Production SADP mutation exchange and complete application wiring remain tracked implementation work; details not covered by those experiments remain explicitly open.
+The architecture baseline is established and the specifications define system boundaries, module APIs, and atomic procedures. The Python implementation is the verified behavioral baseline for discovery. The Go implementation contains core discovery, configuration, logic, UI, and route components and requires repository and real-device validation. SADP activation is disabled; the planned ISAPI activation workflow is not yet wired into the executable. Network mutations require a verified device profile, and unverified salted/AES SADP profiles remain unsupported.
 
 ## 2. Functional Scope
 
 The system is designed to provide:
 
 1. **Device discovery** — send the SADP inquiry probe and receive device responses on supported local network interfaces. The Python implementation has been verified on real devices to find devices and receive their responses; its behavior is the compatibility baseline for the Go implementation. HiToolsDelivery captures document compatible traffic, including UDP multicast destination `239.255.255.250:37020`, an XML `<Probe>` request containing `<Uuid>`, `<Types>inquiry</Types>`, and `<ResponseMode>2</ResponseMode>`, device `<ProbeMatch>` messages, and a separate multicast `<Hello>` message containing `<Types>hello</Types>`. The captures do not establish universal response correlation, retransmission policy, timing, or behavior across all models and firmware.
-2. **Device activation** — send a SADP activation XML request identified by target MAC, applying password-complexity rules. The request format established by practical experiments is the compatibility baseline; activation outcome handling remains an application workflow.
+2. **Device activation** — use ISAPI on a reachable, compatible device and verify activation and device identity. SADP activation is disabled.
 3. **Network configuration** — configure device IP address, subnet mask, gateway, and DHCP state.
 4. **CLI operation** — expose these workflows to users and automation with a shared command catalog and typed results. The default user-facing mode is a full-screen TUI; `--ui=no` starts an interactive CLI REPL, and `--ui=no --once` runs one command from process arguments and exits.
 
-These are target capabilities, with discovery and core application components implemented and mutation production workflows still being completed. Bulk activation and network configuration must report per-device outcomes so a failure for one device does not conceal the result for others. M3 defines the SADP activation request, while its end-to-end sender/result workflow and network-configuration transport/result workflow must be completed before those commands are enabled.
+These are target capabilities, with discovery and core application components implemented and mutation production workflows still being completed. Bulk activation and network configuration must report per-device outcomes so a failure for one device does not conceal the result for others. Mutation services must not be enabled until their transport, identity verification and outcome workflows are complete.
 
 ## 3. Module Boundaries
 
@@ -224,7 +224,7 @@ The Python implementation's successful real-device discovery is verified behavio
 - Do not store sample MAC addresses, serial numbers, UUIDs, or salt values in specifications or fixtures. Treat security-related response fields as sensitive and never log full response XML.
 - Verify `ProbeMatch`/`Hello` variants and correlation behavior across additional devices/firmware before making fields mandatory or defining retries, timing, or a universal response-delivery contract.
 - Define and verify the transport contract for activation and network-configuration payloads: destination, send behavior, reply flow/correlation, timeout, cancellation, and per-device outcome mapping. M1 currently specifies inquiry-probe sending and receiving only; it does not define transmission of activation or network-configuration commands. M3 XML builders alone do not constitute an executable operation.
-- The selected activation protocol is SADP XML identified by target MAC, as specified in P3.1; do not substitute ISAPI HTTP activation. The `SHA-256(UTF-8(password + challenge))` calculation used by network configuration is confirmed by practical experiments and is a normative M3 compatibility requirement.
+- SADP activation is disabled. ISAPI activation requires a reachable address and verified device identity. The legacy `SHA-256(UTF-8(password + challenge))` network profile must not be assumed compatible with every device.
 - The default `MaxSADPDatagramSize` is 1500 bytes and is configurable through settings as specified above. M1 and M2 must use the same resolved setting and the receiver must detect/reject truncation and oversize datagrams.
 - Continue to verify activation response/result behavior and the network-configuration request/response flow separately; request/hash confirmation alone does not establish all device outcome semantics or cross-model behavior.
 - Verify per-interface UDP multicast behavior and cancellation/cleanup on each supported OS. In particular, do not reproduce the Python Windows branch without evidence that it receives the intended SADP replies.
@@ -237,8 +237,9 @@ The Go implementation is in progress: core discovery and application components 
 ### M9: Protocol Route
 
 M9 selects SADP or ISAPI per target and operation. `sadp_first` is the
-default; `isapi_only` is explicit. Fallback is allowed only after a
-classified SADP-unavailable result, an existing route to the target, and
+default; `isapi_only` is explicit. Activation skips SADP and requires a route
+and capability confirmation before ISAPI. For other operations, fallback is
+allowed only after a classified SADP-unavailable result, an existing route to the target, and
 capability confirmation for the requested ISAPI operation. Device rejection,
 authentication failure, malformed or mismatched responses, cancellation,
 deadlines, and verification failures are terminal and never trigger fallback.

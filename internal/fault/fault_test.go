@@ -68,6 +68,11 @@ func TestClassifyPreservesWrappedOperationCategories(t *testing.T) {
 			want: fault.Authentication,
 		},
 		{
+			name: "route transport",
+			err:  &route.Error{Kind: route.ErrorTransport},
+			want: fault.Transport,
+		},
+		{
 			name: "route unavailable",
 			err:  &route.Error{Kind: route.ErrorSADPUnavailable},
 			want: fault.SADPUnavailable,
