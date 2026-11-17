@@ -28,6 +28,26 @@ transports remain compatible.
 | Device salt | `<Salt>` occurs in advertisements/responses | `SADP-Activation-Net-DHCP-HC.txt` | relationship to `Password` unproven |
 | AES, key, KDF, IV, padding | not defined by available material | capture and SDK logs | implementation blocker |
 
+## New dynamic evidence
+
+Live x86 instrumentation refined the internal cryptographic profile without
+publishing secret values:
+
+1. `activate` and password reset call RSA private decrypt with a 128-byte
+   input and PKCS#1 padding.
+2. AES-128-ECB is then applied to independent 16-byte blocks.
+3. In reset mode, the new password and three security-question answers are
+   processed as separate blocks.
+4. For `update`, wire correlation confirms four AES-128-ECB blocks; the
+   request UUID is part of the plaintext and the result is 64 bytes.
+5. `security`, URI `iv`, and AES-CBC were not observed on the investigated
+   raw SADP paths.
+
+The dynamic evidence is not a public test vector: RSA plaintext,
+AES-key derivation, the relationship to `Salt`, and the exact wire placement
+of reset payloads remain unresolved. Therefore `salted-aes` remains fail
+closed and must not be implemented using the ISAPI `security=1/2` parameters.
+
 The two SDK requests show that ciphertext changes between DHCP and static
 operations, but do not identify why: network fields and UUID also change, and
 there is no controlled pair with identical plaintext and all but one input held

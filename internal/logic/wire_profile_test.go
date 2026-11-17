@@ -55,7 +55,7 @@ func TestBuildNetworkXMLWithSaltedProfileFailsClosedWithoutCodec(t *testing.T) {
 }
 
 func TestBuildNetworkXMLWithSaltedProfileFailsClosedOnEncoderFailure(t *testing.T) {
-	const secretPassword = "glazok.kz"
+	const secretPassword = "test-password-42"
 	const secretChallenge = "challenge-secret"
 	payload, err := logic.BuildNetworkXMLWithProfile(
 		net.HardwareAddr{0, 17, 34, 51, 68, 85},

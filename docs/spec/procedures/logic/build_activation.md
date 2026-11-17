@@ -5,6 +5,14 @@
 
 Build the SADP XML request for activating one device using validated credentials and optional recovery data.
 
+This procedure describes the current legacy/application-level
+`<Activate>/<TargetMAC>/<Password>` builder. It is not a production
+implementation of the observed raw SADP SDK profile: raw SADP activation
+uses `<Probe><Types>activate</Types>`, a preceding `exchangecode`, RSA
+preparation, and AES-128-ECB blocks. Because AES-key derivation and the full
+wire format remain unresolved, this builder must not add guessed
+cryptography or claim camera-compatible raw SADP payloads.
+
 ## 2. Go Contract
 
 ```go
