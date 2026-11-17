@@ -42,42 +42,158 @@ func (v ISAPIDeviceInfoVerifier) VerifyActivation(ctx context.Context, target Ta
 	}
 	transport := *v.Transport
 	transport.Password = password
-	base, err := transport.baseURL(target)
+	_, err := transport.discover(ctx, target)
+	return err
+}
+
+type isapiDeviceInfo struct {
+	MACAddress      string
+	Model           string
+	SerialNumber    string
+	FirmwareVersion string
+}
+
+func parseISAPIDeviceInfo(payload []byte) (isapiDeviceInfo, error) {
+	var info isapiDeviceInfo
+	decoder := xml.NewDecoder(bytes.NewReader(payload))
+	seen := make(map[string]bool)
+	depth := 0
+	rootSeen := false
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			if rootSeen && depth == 0 {
+				return info, nil
+			}
+			return isapiDeviceInfo{}, errors.New("invalid device information")
+		}
+		if err != nil {
+			return isapiDeviceInfo{}, err
+		}
+		switch token := token.(type) {
+		case xml.CharData:
+			if depth == 0 && strings.TrimSpace(string(token)) != "" {
+				return isapiDeviceInfo{}, errors.New("invalid device information")
+			}
+		case xml.EndElement:
+			depth--
+		case xml.StartElement:
+			depth++
+			if depth == 1 {
+				if rootSeen || token.Name.Local != "DeviceInfo" {
+					return isapiDeviceInfo{}, errors.New("invalid device information root")
+				}
+				rootSeen = true
+				continue
+			}
+			if depth != 2 {
+				continue
+			}
+			var destination *string
+			switch token.Name.Local {
+			case "macAddress":
+				destination = &info.MACAddress
+			case "model":
+				destination = &info.Model
+			case "serialNumber":
+				destination = &info.SerialNumber
+			case "firmwareVersion":
+				destination = &info.FirmwareVersion
+			default:
+				continue
+			}
+			if seen[token.Name.Local] {
+				return isapiDeviceInfo{}, errors.New("duplicate device information field")
+			}
+			seen[token.Name.Local] = true
+			value, err := decodeSimpleElement(decoder)
+			if err != nil {
+				return isapiDeviceInfo{}, err
+			}
+			*destination = value
+			depth--
+		}
+	}
+}
+
+func (t *ISAPIHTTPTransport) discover(ctx context.Context, target Target) (Result, error) {
+	result := Result{Operation: OperationDiscovery, Protocol: "isapi", Target: target}
+	if t.Username == "" || t.Password == "" {
+		return result, &Error{Kind: ErrorInvalidInput, Err: errors.New("device credentials are required")}
+	}
+	if len(target.MAC) != 0 && len(target.MAC) != 6 {
+		return result, &Error{Kind: ErrorInvalidInput, Err: errors.New("target MAC must be EUI-48")}
+	}
+	base, err := t.baseURL(target)
 	if err != nil {
-		return err
+		return result, err
 	}
 	endpoint := base.ResolveReference(&url.URL{Path: "/ISAPI/System/deviceInfo"})
-	payload, err := transport.requestWithPolicy(ctx, http.MethodGet, endpoint, nil, true)
+	payload, err := t.requestWithPolicy(ctx, http.MethodGet, endpoint, nil, true)
 	if err != nil {
-		return err
+		return result, err
 	}
-	var info struct {
-		XMLName    xml.Name `xml:"DeviceInfo"`
-		MACAddress string   `xml:"macAddress"`
-	}
-	if err := xml.Unmarshal(payload, &info); err != nil {
-		return &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI device information is malformed")}
+	info, err := parseISAPIDeviceInfo(payload)
+	if err != nil {
+		return result, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI device information is malformed")}
 	}
 	mac, err := net.ParseMAC(strings.TrimSpace(info.MACAddress))
-	if err != nil || len(mac) != 6 || !bytes.Equal(mac, target.MAC) {
-		return &Error{Kind: ErrorVerification, Err: errors.New("ISAPI device identity did not match")}
+	if err != nil || len(mac) != 6 || len(target.MAC) != 0 && !bytes.Equal(mac, target.MAC) {
+		return result, &Error{Kind: ErrorVerification, Err: errors.New("ISAPI device identity did not match")}
 	}
-	return nil
+	result.Target.MAC = append(net.HardwareAddr(nil), mac...)
+	result.Device = &DeviceInfo{
+		Model:           strings.TrimSpace(info.Model),
+		SerialNumber:    strings.TrimSpace(info.SerialNumber),
+		FirmwareVersion: strings.TrimSpace(info.FirmwareVersion),
+	}
+	return result, nil
 }
 
 // ISAPIRouteProvider and ISAPICapabilityProvider are deliberately thin
 // adapters: HTTP ownership and response bounds stay in this transport.
 type ISAPIRouteProvider struct{ Transport *ISAPIHTTPTransport }
 
-func (p ISAPIRouteProvider) CanReach(ctx context.Context, address netip.Addr, _ string) (bool, error) {
+func (p ISAPIRouteProvider) CanReach(ctx context.Context, address netip.Addr, iface string) (bool, error) {
+	if ctx == nil {
+		return false, &Error{Kind: ErrorInvalidInput, Err: errors.New("context is required")}
+	}
 	if !address.IsValid() {
 		return false, &Error{Kind: ErrorInvalidInput, Err: errors.New("target address is required")}
 	}
 	if p.Transport == nil {
 		return false, &Error{Kind: ErrorInvalidInput, Err: errors.New("ISAPI transport is required")}
 	}
-	_, err := p.Transport.probe(ctx, Target{Address: address})
-	return err == nil, err
+	if iface != "" {
+		return false, &Error{Kind: ErrorUnsupported, Err: errors.New("explicit ISAPI interface binding is not implemented")}
+	}
+	base, err := p.Transport.baseURL(Target{Address: address})
+	if err != nil {
+		return false, err
+	}
+	port := base.Port()
+	if port == "" {
+		port = "80"
+		if base.Scheme == "https" {
+			port = "443"
+		}
+	}
+	dialer := net.Dialer{Timeout: defaultISAPIRequestTimeout}
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(address.String(), port))
+	if err != nil {
+		if ctx.Err() != nil {
+			return false, contextError(ctx.Err())
+		}
+		var networkErr net.Error
+		if errors.As(err, &networkErr) && networkErr.Timeout() {
+			return false, &Error{Kind: ErrorTimeout, Err: errors.New("ISAPI route probe timed out")}
+		}
+		return false, &Error{Kind: ErrorNoRoute, Err: errors.New("ISAPI target is not reachable")}
+	}
+	if err := conn.Close(); err != nil {
+		return false, &Error{Kind: ErrorTransport, Err: errors.New("failed to close route probe")}
+	}
+	return true, nil
 }
 
 type CapabilityProfile struct {
@@ -89,6 +205,10 @@ type ISAPICapabilityProvider struct{ Transport *ISAPIHTTPTransport }
 func (p ISAPICapabilityProvider) Supports(ctx context.Context, target Target, operation Operation) (bool, error) {
 	if p.Transport == nil {
 		return false, &Error{Kind: ErrorInvalidInput, Err: errors.New("ISAPI transport is required")}
+	}
+	if operation == OperationDiscovery {
+		_, err := p.Transport.discover(ctx, target)
+		return err == nil, err
 	}
 	profile, err := p.Transport.LookupCapabilities(ctx, target)
 	if err != nil {
@@ -114,16 +234,36 @@ func (t *ISAPIHTTPTransport) LookupCapabilities(ctx context.Context, target Targ
 	}
 	profile := CapabilityProfile{Operations: make(map[Operation]bool)}
 	decoder := xml.NewDecoder(bytes.NewReader(payload))
+	depth := 0
+	rootSeen := false
 	for {
 		token, decodeErr := decoder.Token()
 		if decodeErr == io.EOF {
+			if !rootSeen || depth != 0 {
+				return CapabilityProfile{}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI capability response is malformed")}
+			}
 			break
 		}
 		if decodeErr != nil {
 			return CapabilityProfile{}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI capability response is malformed")}
 		}
+		if _, ok := token.(xml.EndElement); ok {
+			depth--
+			continue
+		}
 		start, ok := token.(xml.StartElement)
 		if !ok {
+			continue
+		}
+		depth++
+		if depth == 1 {
+			if rootSeen || start.Name.Local != "Capabilities" {
+				return CapabilityProfile{}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI capability response has an unsupported root")}
+			}
+			rootSeen = true
+			continue
+		}
+		if depth != 2 {
 			continue
 		}
 		var operation Operation
@@ -139,10 +279,11 @@ func (t *ISAPIHTTPTransport) LookupCapabilities(ctx context.Context, target Targ
 		default:
 			continue
 		}
-		var value string
-		if decodeErr := decoder.DecodeElement(&value, &start); decodeErr != nil {
+		value, decodeErr := decodeSimpleElement(decoder)
+		if decodeErr != nil {
 			return CapabilityProfile{}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI capability response is malformed")}
 		}
+		depth--
 		var supported bool
 		switch strings.ToLower(strings.TrimSpace(value)) {
 		case "true", "1":
@@ -158,6 +299,24 @@ func (t *ISAPIHTTPTransport) LookupCapabilities(ctx context.Context, target Targ
 		profile.Operations[operation] = supported
 	}
 	return profile, nil
+}
+
+func decodeSimpleElement(decoder *xml.Decoder) (string, error) {
+	var value strings.Builder
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return "", err
+		}
+		switch token := token.(type) {
+		case xml.CharData:
+			value.Write(token)
+		case xml.EndElement:
+			return value.String(), nil
+		case xml.StartElement:
+			return "", errors.New("nested text field")
+		}
+	}
 }
 
 func (t *ISAPIHTTPTransport) baseURL(target Target) (*url.URL, error) {
@@ -213,6 +372,9 @@ func (t *ISAPIHTTPTransport) Execute(ctx context.Context, operation Operation, t
 	}
 	if operation == OperationActivation {
 		return t.activate(ctx, base, target)
+	}
+	if operation == OperationDiscovery {
+		return t.discover(ctx, target)
 	}
 	if operation == OperationStatus {
 		return t.status(ctx, base, target)

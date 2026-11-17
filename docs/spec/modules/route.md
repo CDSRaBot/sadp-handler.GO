@@ -63,7 +63,13 @@ and verification failure are terminal outcomes. They cannot become an ISAPI
 fallback.
 
 Discovery through ISAPI requires an explicit known address; ISAPI is not an
-implicit replacement for SADP inventory. Activation and network configuration
+implicit replacement for SADP inventory. A successful authenticated
+`deviceInfo` read returns the device MAC, model, serial number and firmware
+version where present; a supplied target MAC must match. This transport
+operation is not yet exposed by the executable. ISAPI route probing opens a
+bounded TCP connection and does not infer reachability from the capabilities
+endpoint. Explicit interface binding is not implemented and is rejected.
+Activation and network configuration
 must pass a post-operation status verification gate.
 
 ## 4. Errors, limits, and security

@@ -63,3 +63,18 @@ target device; the observed salted/AES profile is not yet established.
   be included in commits, fixtures, logs or release artifacts.
 - Record compatibility results without passwords, keys, nonces, ciphertext or
   credential-bearing XML. Use synthetic values in automated tests.
+
+## Current implementation status
+
+- SADP activation is blocked in the UI workflow and route selector. The
+  executable still reports activation unavailable; it does not yet invoke the
+  ISAPI replacement.
+- ISAPI includes bounded HTTP transport, Digest authentication, target-specific
+  addressing, authenticated known-address discovery and an activation
+  identity-verification component. These are tested with synthetic servers, not
+  yet verified on physical devices.
+- Explicit ISAPI interface binding, application wiring, network configuration,
+  user and terminal management, secure UI credential input, bulk workflows and
+  release packaging remain to be implemented and validated.
+- A beta release requires real-device testing on the supported models and
+  firmware, native platform acceptance, and the signing decision above.

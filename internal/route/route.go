@@ -80,8 +80,15 @@ type Result struct {
 	Operation Operation
 	Protocol  string
 	Target    Target
+	Device    *DeviceInfo
 	Fallback  FallbackDecision
 	Err       error
+}
+
+type DeviceInfo struct {
+	Model           string
+	SerialNumber    string
+	FirmwareVersion string
 }
 
 type Transport interface {
@@ -237,6 +244,9 @@ func (s *Selector) executeISAPI(ctx context.Context, operation Operation, target
 	result, err := s.deps.ISAPI.Execute(ctx, operation, target)
 	if err != nil {
 		return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: fallback, Err: err}, err
+	}
+	if operation == OperationDiscovery && len(target.MAC) == 0 && len(result.Target.MAC) == 6 {
+		target.MAC = append(net.HardwareAddr(nil), result.Target.MAC...)
 	}
 	result.Target = target
 	result.Operation = operation
