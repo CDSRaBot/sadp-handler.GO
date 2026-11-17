@@ -75,8 +75,10 @@ target device; the observed salted/AES profile is not yet established.
   for independently confirmed keys and schemas, but is not wired to user
   operations. These components are tested with synthetic data, not yet
   verified on physical devices.
-- Explicit ISAPI interface binding, application wiring, network configuration,
-  user and terminal management, secure UI credential input, bulk workflows and
-  release packaging remain to be implemented and validated.
+- ISAPI network workflow orchestration is covered by synthetic tests but has
+  no verified device-specific profile, reappearance locator, automatic reboot
+  or executable integration. Explicit interface binding, user and terminal
+  management, secure UI credential input, bulk workflows and release
+  packaging also remain to be implemented and validated.
 - A beta release requires real-device testing on the supported models and
   firmware, native platform acceptance, and the signing decision above.

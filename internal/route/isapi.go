@@ -357,11 +357,6 @@ type activationStatus struct {
 	Activated string `xml:"Activated"`
 }
 
-type responseStatus struct {
-	XMLName    xml.Name `xml:"ResponseStatus"`
-	StatusCode string   `xml:"statusCode"`
-}
-
 func (t *ISAPIHTTPTransport) Execute(ctx context.Context, operation Operation, target Target) (Result, error) {
 	if !target.Address.IsValid() {
 		return Result{Operation: operation, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorInvalidInput, Err: errors.New("target address is required")}
@@ -432,11 +427,56 @@ func (t *ISAPIHTTPTransport) activate(ctx context.Context, base *url.URL, target
 }
 
 func validateISAPIResponseStatus(payload []byte) error {
-	var response responseStatus
-	if err := xml.Unmarshal(payload, &response); err != nil || strings.TrimSpace(response.StatusCode) == "" {
+	decoder := xml.NewDecoder(bytes.NewReader(payload))
+	var status string
+	depth := 0
+	rootSeen := false
+	statusSeen := false
+	malformed := func() error {
 		return &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI response status is malformed")}
 	}
-	if strings.TrimSpace(response.StatusCode) != "1" {
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return malformed()
+		}
+		switch token := token.(type) {
+		case xml.CharData:
+			if depth == 0 && strings.TrimSpace(string(token)) != "" {
+				return malformed()
+			}
+		case xml.EndElement:
+			depth--
+		case xml.StartElement:
+			depth++
+			if depth == 1 {
+				if rootSeen || token.Name.Local != "ResponseStatus" {
+					return malformed()
+				}
+				rootSeen = true
+				continue
+			}
+			if depth != 2 || token.Name.Local != "statusCode" {
+				continue
+			}
+			if statusSeen {
+				return malformed()
+			}
+			statusSeen = true
+			status, err = decodeSimpleElement(decoder)
+			if err != nil {
+				return malformed()
+			}
+			depth--
+		}
+	}
+	if !rootSeen || depth != 0 || !statusSeen || strings.TrimSpace(status) == "" {
+		return malformed()
+	}
+	if strings.TrimSpace(status) != "1" {
 		return &Error{Kind: ErrorRejected, Err: errors.New("ISAPI operation was rejected")}
 	}
 	return nil
@@ -470,18 +510,8 @@ func (t *ISAPIHTTPTransport) requestWithPolicy(ctx context.Context, method strin
 	if body != nil {
 		request.Header.Set("Content-Type", "application/xml")
 	}
-	client := t.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	boundedClient := *client
-	if boundedClient.Timeout <= 0 {
-		boundedClient.Timeout = defaultISAPIRequestTimeout
-	}
-	boundedClient.CheckRedirect = func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}
-	status, headers, payload, err := t.performRequest(ctx, &boundedClient, request)
+	client := t.boundedHTTPClient()
+	status, headers, payload, err := t.performRequest(ctx, client, request)
 	if err != nil {
 		return nil, err
 	}
@@ -501,7 +531,7 @@ func (t *ISAPIHTTPTransport) requestWithPolicy(ctx context.Context, method strin
 			}
 		}
 		retry.Header.Set("Authorization", authorization)
-		status, _, payload, err = t.performRequest(ctx, &boundedClient, retry)
+		status, _, payload, err = t.performRequest(ctx, client, retry)
 		if err != nil {
 			return nil, err
 		}
@@ -513,6 +543,21 @@ func (t *ISAPIHTTPTransport) requestWithPolicy(ctx context.Context, method strin
 		return nil, &Error{Kind: ErrorRejected, Err: fmt.Errorf("ISAPI HTTP status %s", strconv.Itoa(status))}
 	}
 	return payload, nil
+}
+
+func (t *ISAPIHTTPTransport) boundedHTTPClient() *http.Client {
+	client := t.Client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	copy := *client
+	if copy.Timeout <= 0 {
+		copy.Timeout = defaultISAPIRequestTimeout
+	}
+	copy.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return &copy
 }
 
 func (t *ISAPIHTTPTransport) performRequest(ctx context.Context, client *http.Client, request *http.Request) (int, http.Header, []byte, error) {

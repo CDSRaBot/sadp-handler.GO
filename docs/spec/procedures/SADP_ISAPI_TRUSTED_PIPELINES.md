@@ -383,6 +383,17 @@ Network changes are disruptive. The result must preserve the old identity,
 requested plan, observed new address, and verification state without exposing
 credentials.
 
+The Go workflow currently requires an explicitly supplied, verified
+device-specific network profile and a reappearance locator; neither is wired
+into the executable yet. It bounds a workflow to 60 seconds, limits the
+interface identifier to 64 safe ASCII characters and the mutation body to
+64 KiB, and records whether a mutation was attempted even when verification
+fails; an attempted mutation may or may not have reached the device.
+It reports a required restart without automatically issuing one. Its mutation
+transport obtains a Digest challenge with a safe GET before sending a
+credential-bearing write; devices that do not provide that challenge fail
+closed. These are implementation limits, not universal protocol limits.
+
 ### Network configuration request sequence
 
 The implementation MUST read the interface collection before it writes a

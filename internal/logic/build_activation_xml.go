@@ -112,6 +112,11 @@ func validateNetworkConfig(config NetworkConfig) error {
 	return nil
 }
 
+// ValidateNetworkConfig checks the common DHCP and IPv4 configuration rules.
+func ValidateNetworkConfig(config NetworkConfig) error {
+	return validateNetworkConfig(config)
+}
+
 func invalidOperation(field string, err error) error {
 	return &DeviceOperationError{
 		Kind: OperationInvalidInput,
