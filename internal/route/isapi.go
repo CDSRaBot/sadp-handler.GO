@@ -25,6 +25,7 @@ type ISAPIHTTPTransport struct {
 	MaxResponseBytes int64
 	Username         string
 	Password         string
+	AllowBasic       bool
 	Verifier         ISAPIActivationVerifier
 }
 
@@ -560,10 +561,10 @@ func (t *ISAPIHTTPTransport) requestWithPolicy(ctx context.Context, method strin
 		return nil, err
 	}
 	if requireAuthentication && status != http.StatusUnauthorized {
-		return nil, &Error{Kind: ErrorAuthentication, Err: errors.New("ISAPI Digest authentication challenge is required")}
+		return nil, &Error{Kind: ErrorAuthentication, Err: errors.New("ISAPI authentication challenge is required")}
 	}
 	if status == http.StatusUnauthorized && t.Username != "" {
-		authorization, authErr := digestAuthorization(headers.Values("WWW-Authenticate"), request, t.Username, t.Password)
+		authorization, authErr := t.authorizationForChallenge(headers.Values("WWW-Authenticate"), request)
 		if authErr != nil {
 			return nil, &Error{Kind: ErrorAuthentication, Err: authErr}
 		}

@@ -25,13 +25,13 @@ func (t *ISAPIHTTPTransport) authenticatedMutation(ctx context.Context, method s
 		return nil, false, err
 	}
 	if status != http.StatusUnauthorized {
-		return nil, false, &Error{Kind: ErrorAuthentication, Err: errors.New("ISAPI mutation requires a Digest challenge")}
+		return nil, false, &Error{Kind: ErrorAuthentication, Err: errors.New("ISAPI mutation requires an authentication challenge")}
 	}
 	request, err := http.NewRequestWithContext(ctx, method, endpoint.String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, false, &Error{Kind: ErrorInvalidInput, Err: errors.New("ISAPI mutation request is invalid")}
 	}
-	authorization, err := digestAuthorization(headers.Values("WWW-Authenticate"), request, t.Username, t.Password)
+	authorization, err := t.authorizationForChallenge(headers.Values("WWW-Authenticate"), request)
 	if err != nil {
 		return nil, false, &Error{Kind: ErrorAuthentication, Err: err}
 	}

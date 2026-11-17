@@ -34,11 +34,14 @@ the cached web UI code for that endpoint also uses hex key, IV, and ciphertext
 representations. This is a device/endpoint-specific wire format, not a
 contradiction of the generic representation above.
 
-The Go field-encryption helper implements only the generic Base64 format for
-one UTF-8 field per generated IV. Its input limit is 4096 bytes; this is an
-application resource limit, not a protocol maximum. The caller must establish
-the operation-specific key and confirm device capability and schema before
-using it. It does not implement the recovery-question format or send requests.
+The Go helpers implement both the generic Base64 format for one UTF-8 field
+per generated IV and the captured `security=1` recovery-question KDF and
+hex-field format with one random IV per request. The latter is not wired to
+an endpoint and has only synthetic-vector coverage. Each input is limited to
+4096 bytes, a recovery request to 16 fields, and the KDF to 100000 iterations;
+these are application resource limits, not protocol maxima. Callers must
+confirm the device capability, schema and authentication before using them.
+Neither helper sends requests.
 
 ## Challenge and request flow
 
@@ -115,6 +118,9 @@ aes_key_hex = first 32 hexadecimal characters of h
 iv_hex      = MD5(decimal_current_time_in_milliseconds)
 ```
 
+The Go implementation interprets each intermediate SHA-256 value as lowercase
+hexadecimal text when constructing the next hash input.
+
 For the captured `security=1` path, the first 32 hex characters are parsed as
 a 16-byte AES-128 key. The AES key uses the salt from
 `/ISAPI/Security/capabilities`; the login challenge and the salt returned by
@@ -161,6 +167,12 @@ The returned proof is hex text. This login proof must not be confused with the
 AES key derivation above. In the capture, the session challenge and salt are
 hex strings of 16 and 32 bytes respectively; the security capabilities
 advertise `keyIterateNum=100`.
+
+The Go helper computes this captured proof using lowercase hexadecimal
+intermediate hashes and accepts 2–100000 iterations. It does not retrieve or
+validate the challenge, manage the session or send the proof. Device profile
+and challenge lifetime must be established by the caller; the proof itself
+must not be logged or persisted.
 
 ### Activation challenge and encryption
 

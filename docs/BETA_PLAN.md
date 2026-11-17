@@ -72,15 +72,16 @@ target device; the observed salted/AES profile is not yet established.
 - SADP discovery is available through the TUI session and bounded CLI
   snapshots. CLI snapshots combine repeated advertisements by MAC and sender
   address and report discovery errors alongside any partial results.
-- ISAPI includes bounded HTTP transport, Digest authentication, target-specific
+- ISAPI includes bounded HTTP transport, Digest authentication and opt-in
+  Basic over HTTPS, target-specific
   addressing, authenticated known-address discovery and an activation
   identity-verification component. The activation challenge uses the
   captured `PublicKey` envelope and rejects ambiguous challenge and status
   fields; passwords are validated before any request to prevent truncation.
-  Generic user-field encryption is available
-  for independently confirmed keys and schemas, but is not wired to user
-  operations. These components are tested with synthetic data, not yet
-  verified on physical devices.
+  Generic user-field encryption, the captured session-login proof and
+  security-question field-encryption/KDF format are available for confirmed
+  schemas, but are not wired to user operations. These components are tested
+  with synthetic data, not yet verified on physical devices.
 - ISAPI network workflow orchestration is covered by synthetic tests but has
   no verified device-specific profile, DHCP reappearance locator, automatic
   reboot or executable integration. An authenticated static-address locator

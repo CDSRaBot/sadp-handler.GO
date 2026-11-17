@@ -275,6 +275,8 @@ device.
 - Digest is the default and preferred mechanism.
 - Basic authentication is permitted only when explicitly enabled and
   supported by the device policy.
+- The Go transport additionally requires HTTPS for Basic and does not fall
+  back to Basic when a Digest challenge is present but unsupported.
 - A `401` must distinguish bad credentials, locked account, missing user,
   unsupported authentication, and expired/invalid challenge when the response
   provides those details.
@@ -393,9 +395,10 @@ An available static-address locator retries bounded authenticated identity
 checks at the requested address. DHCP location remains unimplemented; neither
 the locator nor the workflow has been validated on physical devices.
 It reports a required restart without automatically issuing one. Its mutation
-transport obtains a Digest challenge with a safe GET before sending a
-credential-bearing write; devices that do not provide that challenge fail
-closed. These are implementation limits, not universal protocol limits.
+transport obtains an authentication challenge with a safe GET before sending
+a credential-bearing write; Digest is preferred, while Basic requires
+explicit opt-in and HTTPS. Devices without a supported challenge fail closed.
+These are implementation limits, not universal protocol limits.
 
 ### Network configuration request sequence
 
