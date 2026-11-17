@@ -71,8 +71,10 @@ target device; the observed salted/AES profile is not yet established.
   ISAPI replacement.
 - ISAPI includes bounded HTTP transport, Digest authentication, target-specific
   addressing, authenticated known-address discovery and an activation
-  identity-verification component. These are tested with synthetic servers, not
-  yet verified on physical devices.
+  identity-verification component. Generic user-field encryption is available
+  for independently confirmed keys and schemas, but is not wired to user
+  operations. These components are tested with synthetic data, not yet
+  verified on physical devices.
 - Explicit ISAPI interface binding, application wiring, network configuration,
   user and terminal management, secure UI credential input, bulk workflows and
   release packaging remain to be implemented and validated.

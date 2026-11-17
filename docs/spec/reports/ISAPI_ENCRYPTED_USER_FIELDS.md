@@ -34,6 +34,12 @@ the cached web UI code for that endpoint also uses hex key, IV, and ciphertext
 representations. This is a device/endpoint-specific wire format, not a
 contradiction of the generic representation above.
 
+The Go field-encryption helper implements only the generic Base64 format for
+one UTF-8 field per generated IV. Its input limit is 4096 bytes; this is an
+application resource limit, not a protocol maximum. The caller must establish
+the operation-specific key and confirm device capability and schema before
+using it. It does not implement the recovery-question format or send requests.
+
 ## Challenge and request flow
 
 When the device advertises the security-challenge procedure, obtain and
