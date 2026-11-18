@@ -5,11 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/netip"
 	"strings"
+	"time"
 
 	"github.com/CDSRaBot/sadp-handler.GO/internal/adapter"
+	"github.com/CDSRaBot/sadp-handler.GO/internal/logging"
+	"github.com/CDSRaBot/sadp-handler.GO/internal/network"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/parser"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textarea"
@@ -25,14 +29,16 @@ type tuiCommandResultMsg struct {
 }
 
 type tuiDiscoverySessionMsg struct {
-	session DiscoverySession
-	err     error
+	session    DiscoverySession
+	err        error
+	generation uint64
 }
 
 type tuiDiscoveryEventMsg struct {
-	device DiscoveredDevice
-	err    error
-	done   bool
+	device     DiscoveredDevice
+	err        error
+	done       bool
+	generation uint64
 }
 
 type tuiInterfacesMsg struct {
@@ -41,20 +47,25 @@ type tuiInterfacesMsg struct {
 }
 
 type TUIModel struct {
-	state        *TUIState
-	dependencies Dependencies
-	ctx          context.Context
-	devices      list.Model
-	filter       textinput.Model
-	console      textarea.Model
-	details      viewport.Model
-	session      DiscoverySession
-	discovered   []parser.Device
-	interfaces   []adapter.Interface
-	pending      Command
-	status       string
-	width        int
-	height       int
+	state               *TUIState
+	dependencies        Dependencies
+	ctx                 context.Context
+	devices             list.Model
+	filter              textinput.Model
+	console             textarea.Model
+	details             viewport.Model
+	session             DiscoverySession
+	discoveryCancel     context.CancelFunc
+	discoveryDone       <-chan struct{}
+	discoveryGeneration uint64
+	discovered          []parser.Device
+	interfaces          []adapter.Interface
+	interfacePicker     bool
+	interfaceCursor     int
+	pending             Command
+	status              string
+	width               int
+	height              int
 }
 
 func RunTUI(ctx context.Context, dependencies Dependencies) error {
@@ -62,7 +73,7 @@ func RunTUI(ctx context.Context, dependencies Dependencies) error {
 		return fmt.Errorf("TUI context is nil")
 	}
 	model := NewTUIModel(ctx, NewTUIState(), dependencies)
-	_, err := tea.NewProgram(model, tea.WithContext(ctx)).Run()
+	_, err := tea.NewProgram(model, tea.WithContext(ctx), tea.WithAltScreen()).Run()
 	return err
 }
 
@@ -89,6 +100,8 @@ func NewTUIModel(ctx context.Context, state *TUIState, dependencies Dependencies
 	devices.Title = "Devices"
 	devices.SetShowStatusBar(false)
 	devices.SetShowPagination(false)
+	devices.SetShowTitle(false)
+	devices.SetShowHelp(false)
 	devices.SetFilteringEnabled(false)
 
 	return TUIModel{
@@ -99,12 +112,12 @@ func NewTUIModel(ctx context.Context, state *TUIState, dependencies Dependencies
 		filter:       filter,
 		console:      input,
 		details:      viewport.New(0, 0),
-		status:       "Tab: switch zone  Enter: submit  Space: select  Ctrl+C: exit",
+		status:       "i: interface  Tab: zone  Arrows: navigate  Space: select  Enter: open  Ctrl+C: exit",
 	}
 }
 
 func (m TUIModel) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, m.loadInterfaces(), m.startDiscovery())
+	return tea.Batch(textarea.Blink, m.loadInterfaces())
 }
 
 func (m TUIModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -123,12 +136,27 @@ func (m TUIModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = message.result.Message
 		}
 		m.details.SetContent(m.status)
+		if message.result.Exit {
+			m.stopDiscovery()
+			return m, tea.Quit
+		}
 	case tuiDiscoverySessionMsg:
+		if message.generation != m.discoveryGeneration {
+			return m, nil
+		}
 		if message.err != nil {
-			m.status = fmt.Sprintf("discovery failed to start: %v", message.err)
+			m.status = "discovery failed to start: " + sanitizeTUIDisplay(message.err.Error())
+			m.logEvent(slog.LevelError, "ui.discovery_start_failed")
+			return m, nil
+		}
+		if message.session == nil || message.session.Events() == nil || message.session.Errors() == nil {
+			m.status = "discovery session is unavailable"
+			m.logEvent(slog.LevelError, "ui.discovery_start_failed")
 			return m, nil
 		}
 		m.session = message.session
+		m.status = "discovery running"
+		m.logEvent(slog.LevelInfo, "ui.discovery_started")
 		return m, m.waitForDiscoveryEvent()
 	case tuiInterfacesMsg:
 		if message.err != nil {
@@ -137,7 +165,7 @@ func (m TUIModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.SetAvailableInterfaces(message.interfaces)
 		if m.dependencies.InterfaceIndex == nil {
-			m.status = "select an interface before discovery"
+			m.status = "press i to choose an interface"
 			return m, nil
 		}
 		if err := m.SelectInterface(*m.dependencies.InterfaceIndex); err != nil {
@@ -146,19 +174,29 @@ func (m TUIModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.startDiscovery()
 	case tuiDiscoveryEventMsg:
+		if message.generation != m.discoveryGeneration {
+			return m, nil
+		}
 		if message.err != nil {
-			m.status = fmt.Sprintf("discovery failed: %v", message.err)
+			m.status = "discovery error: " + sanitizeTUIDisplay(message.err.Error())
+			m.logEvent(slog.LevelWarn, "ui.discovery_error")
 			return m, m.waitForDiscoveryEvent()
 		}
 		if message.done {
+			m.stopDiscovery()
 			m.status = "discovery stopped"
+			m.logEvent(slog.LevelInfo, "ui.discovery_stopped")
 			return m, nil
 		}
 		m.applyDiscoveryEvent(message.device)
 		return m, m.waitForDiscoveryEvent()
 	case tea.KeyMsg:
 		if message.String() == "ctrl+c" {
+			m.stopDiscovery()
 			return m, tea.Quit
+		}
+		if m.interfacePicker {
+			return m.handleInterfacePicker(message)
 		}
 		if m.pending != nil {
 			switch message.String() {
@@ -213,9 +251,15 @@ func (m TUIModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case " ":
 				m.state.ToggleFocusedSelection()
 			case "enter":
-				m.state.SetZone(TUIZoneDetails)
+				if err := m.state.SetZone(TUIZoneDetails); err != nil {
+					m.status = "cannot open device details"
+				} else {
+					m.updateFocus()
+					m.updateDeviceDetails()
+				}
 			case "i":
-				return m, m.selectNextInterface()
+				m.openInterfacePicker()
+				return m, nil
 			case "/":
 				m.filter.Focus()
 				m.status = "filtering devices; Enter accepts, Esc clears"
@@ -227,17 +271,40 @@ func (m TUIModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, textinput.Blink
 				}
 				if message.String() == "q" {
+					m.stopDiscovery()
 					return m, tea.Quit
 				}
 			}
 			m.syncDeviceList()
+			m.updateDeviceDetails()
 		case TUIZoneDetails:
-			if message.String() == "esc" {
-				m.state.SetZone(TUIZoneDevices)
+			switch message.String() {
+			case "esc":
+				if err := m.state.SetZone(TUIZoneDevices); err != nil {
+					m.status = "cannot return to device list"
+				} else {
+					m.updateFocus()
+				}
+			default:
+				var command tea.Cmd
+				m.details, command = m.details.Update(message)
+				return m, command
 			}
 		case TUIZoneConsole:
 			if message.String() == "enter" {
 				return m, m.submitConsole()
+			}
+			if message.String() == "up" {
+				if value, ok := m.state.PreviousHistory(); ok {
+					m.console.SetValue(value)
+				}
+				return m, nil
+			}
+			if message.String() == "down" {
+				if value, ok := m.state.NextHistory(); ok {
+					m.console.SetValue(value)
+				}
+				return m, nil
 			}
 			var command tea.Cmd
 			m.console, command = m.console.Update(message)
@@ -249,14 +316,29 @@ func (m TUIModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m TUIModel) View() string {
 	top := lipgloss.NewStyle().Bold(true).Render("SADP Handler  " + m.interfaceStatus())
+	if m.interfacePicker {
+		return lipgloss.JoinVertical(lipgloss.Left, top, m.interfacePickerView(), m.status)
+	}
 	filter := m.filter.View()
-	deviceView := lipgloss.JoinVertical(lipgloss.Left, "Devices", m.devices.View())
-	detailView := lipgloss.JoinVertical(lipgloss.Left, "Details", m.details.View())
+	deviceTitle, detailTitle, consoleTitle := "Devices", "Details", "Console"
+	switch m.state.Zone() {
+	case TUIZoneDevices:
+		deviceTitle += " [active]"
+	case TUIZoneDetails:
+		detailTitle += " [active]"
+	case TUIZoneConsole:
+		consoleTitle += " [active]"
+	}
+	leftWidth, rightWidth, bodyHeight := m.layoutDimensions()
+	deviceView := lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Width(leftWidth - 2).
+		Height(bodyHeight - 2).Render(lipgloss.JoinVertical(lipgloss.Left, deviceTitle, m.devices.View()))
+	detailView := lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Width(rightWidth - 2).
+		Height(bodyHeight - 2).Render(lipgloss.JoinVertical(lipgloss.Left, detailTitle, m.details.View()))
 	body := lipgloss.JoinHorizontal(lipgloss.Top,
-		lipgloss.NewStyle().Width(m.width/2).Render(deviceView),
-		lipgloss.NewStyle().Width(m.width-m.width/2).Render(detailView),
+		deviceView, detailView,
 	)
-	console := m.console.View()
+	console := lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Width(leftWidth + rightWidth - 2).
+		Render(lipgloss.JoinVertical(lipgloss.Left, consoleTitle, m.console.View()))
 	return lipgloss.JoinVertical(lipgloss.Left, top, filter, body, console, m.status)
 }
 
@@ -272,17 +354,74 @@ func (m *TUIModel) SetDevices(devices []parser.Device) {
 	m.syncDeviceList()
 }
 
-func (m TUIModel) startDiscovery() tea.Cmd {
+func (m *TUIModel) startDiscovery() tea.Cmd {
 	if m.dependencies.DiscoverySession == nil {
+		m.status = "discovery service is unavailable"
 		return nil
 	}
-	ctx := m.ctx
+	if m.dependencies.InterfaceIndex == nil {
+		m.status = "select an interface before discovery"
+		return nil
+	}
+	previousDone := m.discoveryDone
+	m.stopDiscovery()
+	m.discoveryGeneration++
+	generation := m.discoveryGeneration
+	ctx, cancel := context.WithCancel(m.ctx)
+	m.discoveryCancel = cancel
+	done := make(chan struct{})
+	m.discoveryDone = done
 	service := m.dependencies.DiscoverySession
-	index := m.dependencies.InterfaceIndex
+	selected := *m.dependencies.InterfaceIndex
+	index := &selected
 	policy := m.dependencies.DiscoveryPolicy
+	if policy.ProbeInterval <= 0 {
+		policy.ProbeInterval = time.Minute
+	}
+	policy.CycleTimeout = 0
+	policy.RepeatCount = 0
+	if policy.MaxSADPDatagramSize == 0 {
+		policy.MaxSADPDatagramSize = network.DefaultMaxSADPDatagramSize
+	}
+	m.status = "starting discovery"
+	m.logEvent(slog.LevelInfo, "ui.discovery_start_requested")
 	return func() tea.Msg {
+		if previousDone != nil {
+			select {
+			case <-previousDone:
+			case <-ctx.Done():
+				close(done)
+				return tuiDiscoverySessionMsg{err: ctx.Err(), generation: generation}
+			}
+		}
 		session, err := service.Start(ctx, index, policy)
-		return tuiDiscoverySessionMsg{session: session, err: err}
+		if err != nil {
+			close(done)
+			return tuiDiscoverySessionMsg{err: err, generation: generation}
+		}
+		if session == nil || session.Events() == nil || session.Errors() == nil {
+			close(done)
+			return tuiDiscoverySessionMsg{err: errors.New("discovery session channels are incomplete"), generation: generation}
+		}
+		forwarded := newTUIForwardedSession(ctx, session, done)
+		return tuiDiscoverySessionMsg{session: forwarded, generation: generation}
+	}
+}
+
+func (m *TUIModel) stopDiscovery() {
+	if m.discoveryCancel != nil {
+		m.discoveryCancel()
+		m.discoveryCancel = nil
+	}
+	m.session = nil
+}
+
+func (m *TUIModel) logEvent(level slog.Level, name string) {
+	if m.dependencies.Logger == nil {
+		return
+	}
+	if err := logging.Event(m.dependencies.Logger, level, name); err != nil {
+		m.status += " | log write failed"
 	}
 }
 
@@ -297,26 +436,22 @@ func (m TUIModel) loadInterfaces() tea.Cmd {
 	}
 }
 
-func (m TUIModel) selectNextInterface() tea.Cmd {
+func (m *TUIModel) openInterfacePicker() {
 	if len(m.interfaces) == 0 {
 		m.status = "no eligible interface available"
-		return nil
+		return
 	}
-	next := 0
+	m.interfaceCursor = 0
 	if selected, ok := m.SelectedInterface(); ok {
 		for index, iface := range m.interfaces {
 			if iface.Index == selected.Index {
-				next = (index + 1) % len(m.interfaces)
+				m.interfaceCursor = index
 				break
 			}
 		}
 	}
-	if err := m.SelectInterface(m.interfaces[next].Index); err != nil {
-		m.status = "interface selection failed"
-		return nil
-	}
-	m.status = fmt.Sprintf("selected interface %d; starting discovery", m.interfaces[next].Index)
-	return m.startDiscovery()
+	m.interfacePicker = true
+	m.status = "choose interface: arrows, Enter to select, Esc to cancel"
 }
 
 func (m TUIModel) interfaceStatus() string {
@@ -328,6 +463,7 @@ func (m TUIModel) interfaceStatus() string {
 
 func (m TUIModel) waitForDiscoveryEvent() tea.Cmd {
 	session := m.session
+	generation := m.discoveryGeneration
 	if session == nil {
 		return nil
 	}
@@ -340,19 +476,19 @@ func (m TUIModel) waitForDiscoveryEvent() tea.Cmd {
 					events = nil
 					continue
 				}
-				return tuiDiscoveryEventMsg{device: device}
+				return tuiDiscoveryEventMsg{device: device, generation: generation}
 			case err, ok := <-errs:
 				if !ok {
 					errs = nil
 					continue
 				}
 				if err != nil {
-					return tuiDiscoveryEventMsg{err: err}
+					return tuiDiscoveryEventMsg{err: err, generation: generation}
 				}
-				return tuiDiscoveryEventMsg{err: errors.New("discovery session returned an empty error")}
+				return tuiDiscoveryEventMsg{err: errors.New("discovery session returned an empty error"), generation: generation}
 			}
 		}
-		return tuiDiscoveryEventMsg{done: true}
+		return tuiDiscoveryEventMsg{done: true, generation: generation}
 	}
 }
 
@@ -368,13 +504,16 @@ func (m *TUIModel) applyDiscoveryEvent(device DiscoveredDevice) {
 			m.discovered[index] = converted
 			m.state.SetDevices(m.discovered)
 			m.syncDeviceList()
+			m.updateDeviceDetails()
 			return
 		}
 	}
 	m.discovered = append(m.discovered, converted)
 	m.state.SetDevices(m.discovered)
 	m.syncDeviceList()
+	m.updateDeviceDetails()
 	m.status = fmt.Sprintf("%d device(s) discovered", len(m.discovered))
+	m.logEvent(slog.LevelInfo, "ui.device_discovered")
 }
 
 func toParserDevice(device DiscoveredDevice) (parser.Device, bool) {
@@ -416,18 +555,48 @@ func parseSenderIP(value string) net.IP {
 func (m *TUIModel) syncDeviceList() {
 	items := make([]list.Item, 0)
 	for _, device := range m.state.VisibleDevices() {
-		items = append(items, deviceItem{device: device})
+		_, selected := m.state.selected[deviceIdentity(device)]
+		items = append(items, deviceItem{device: device, selected: selected})
 	}
 	m.devices.SetItems(items)
+	if len(items) != 0 {
+		m.devices.Select(m.state.focused)
+	}
 }
 
 func (m *TUIModel) resize() {
 	if m.width < 1 || m.height < 1 {
 		return
 	}
-	m.devices.SetSize(m.width/2, m.height-6)
-	m.details.Width = m.width - m.width/2
-	m.details.Height = m.height - 6
+	leftWidth, rightWidth, bodyHeight := m.layoutDimensions()
+	m.devices.SetSize(leftWidth-2, bodyHeight-3)
+	m.details.Width = rightWidth - 2
+	m.details.Height = bodyHeight - 3
+	m.console.SetWidth(leftWidth + rightWidth - 4)
+}
+
+func (m TUIModel) layoutDimensions() (int, int, int) {
+	width, height := m.width, m.height
+	if width < 20 {
+		width = 20
+	}
+	if height < 12 {
+		height = 12
+	}
+	return width / 2, width - width/2, height - 8
+}
+
+func (m *TUIModel) updateDeviceDetails() {
+	device, ok := m.state.FocusedDevice()
+	if !ok {
+		m.details.SetContent("No device selected")
+		return
+	}
+	state := discoveryActivationState(device.ActivationKnown, device.Activated)
+	details := fmt.Sprintf("Model: %s\nSerial: %s\nIP: %s\nMAC: %s\nActivation: %s\nFirmware: %s\nSADP identity unverified",
+		sanitizeTUIDisplay(device.Model), sanitizeTUIDisplay(device.SerialNumber), device.IPv4,
+		device.MAC, state, sanitizeTUIDisplay(device.SoftwareVersion))
+	m.details.SetContent(details)
 }
 
 func (m *TUIModel) nextZone() {
@@ -474,6 +643,19 @@ func (m *TUIModel) submitConsole() tea.Cmd {
 		m.status = "command was not stored in history"
 		return nil
 	}
+	if discover, ok := command.(DiscoverCommand); ok {
+		m.logEvent(slog.LevelInfo, "ui.command_discover")
+		if discover.InterfaceIndex != nil {
+			if err := m.SelectInterface(*discover.InterfaceIndex); err != nil {
+				m.status = "requested interface is unavailable"
+				return nil
+			}
+		} else if m.dependencies.InterfaceIndex == nil {
+			m.openInterfacePicker()
+			return nil
+		}
+		return m.startDiscovery()
+	}
 	if _, ok := command.(ActivateCommand); ok &&
 		(m.dependencies.Activation == nil || sadpActivationDisabled(m.dependencies.Activation)) {
 		return m.runCommand(command)
@@ -514,7 +696,8 @@ func confirmedCommand(command Command) Command {
 }
 
 type deviceItem struct {
-	device parser.Device
+	device   parser.Device
+	selected bool
 }
 
 func (i deviceItem) FilterValue() string {
@@ -534,6 +717,14 @@ func (deviceDelegate) Render(writer io.Writer, model list.Model, index int, item
 		return
 	}
 	state := discoveryActivationState(value.device.ActivationKnown, value.device.Activated)
-	_, _ = fmt.Fprintf(writer, "%s  %-8s  %s  %s", value.device.MAC, state,
+	cursor, selection := " ", "[ ]"
+	if index == model.Index() {
+		cursor = ">"
+	}
+	if value.selected {
+		selection = "[x]"
+	}
+	row := fmt.Sprintf("%s%s %s  %-8s  %s  %s", cursor, selection, value.device.MAC, state,
 		sanitizeTUIDisplay(value.device.Model), sanitizeTUIDisplay(value.device.SerialNumber))
+	_, _ = fmt.Fprint(writer, lipgloss.NewStyle().MaxWidth(model.Width()).Render(row))
 }

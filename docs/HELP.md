@@ -240,6 +240,14 @@ Export a locale template from the embedded English catalog. This is a standalone
 
 ## TUI commands
 
+Press `i` in the device zone to open the interface list. Use Up/Down and
+Enter to select an interface, or Esc to cancel. Discovery starts only after
+selection. `Tab` and `Shift+Tab` move between bordered Devices, Details and
+Console zones; the active zone is labeled. In Devices, Up/Down move the
+cursor, Space marks a device, `/` edits the filter, and Enter opens Details.
+In Console, type a command and press Enter; Up/Down recall command history.
+Use `q` in the device zone or Ctrl+C to exit.
+
 The TUI starts by default. Its command console accepts the same application commands but uses a separate, shorter grammar:
 
 ```text
@@ -254,7 +262,7 @@ quit
 --export-locale-template PATH
 ```
 
-- If `discover` has no index, it uses the interface explicitly selected in the TUI; otherwise it uses the specified interface. The TUI sends the first probe immediately, then sends another every 60 seconds while continuing to receive advertisements until canceled.
+- If `discover` has no index, it uses the interface explicitly selected in the TUI; otherwise it uses the specified interface. The TUI sends the first probe immediately and continues until canceled, using the configured positive probe interval or 60 seconds by default. Switching interfaces cancels and closes the previous session before starting the next.
 - For `activate` and `network`, MAC is optional: without it, the selected devices are targeted, or the focused device if none are selected. Before a bulk operation, the TUI must show the targets and request confirmation.
 - While activation is unavailable, the TUI and CLI REPL report disabled SADP
   activation (or the unavailable ISAPI workflow in `isapi_only` mode) without
@@ -267,3 +275,4 @@ quit
 - CLI exit codes: `0` — success (including `quit`), `1` — command or operational failure, `2` — invalid invocation/arguments, `130` — one-shot interrupted with Ctrl+C.
 - In the REPL, a command error does not terminate the process. EOF exits the REPL cleanly; Ctrl+C cancels the active command and returns to the prompt.
 - Commands must not store or display passwords, challenges, derived secrets, or raw XML data.
+- The application writes operational events to `logs/sadp-handler.log` under the process working directory. Command arguments, device identifiers, passwords and payloads are not written to these events. A log write failure is reported rather than silently ignored.

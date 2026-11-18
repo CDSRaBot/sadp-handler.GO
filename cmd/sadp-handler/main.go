@@ -68,6 +68,7 @@ func run() int {
 	}
 	dependencies := app.BuildDependencies(runtime, app.ServiceSet{
 		UI: ui.Dependencies{
+			Logger:          logging.Logger,
 			Discovery:       ui.SessionDiscoveryService{Sessions: session},
 			ISAPIDiscovery:  ui.ISAPIKnownAddressService{Passwords: ui.NewOneShotPasswordProvider(os.Stdin)},
 			ISAPIStatus:     ui.ISAPIKnownAddressStatusService{},

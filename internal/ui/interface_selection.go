@@ -63,6 +63,7 @@ func (m *TUIModel) SelectInterface(index int) error {
 	m.state.ClearSelection()
 	m.state.SetDevices(nil)
 	m.syncDeviceList()
+	m.updateDeviceDetails()
 	return nil
 }
 

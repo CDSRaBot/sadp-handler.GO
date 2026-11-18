@@ -3,6 +3,8 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"sort"
@@ -12,6 +14,7 @@ import (
 	"github.com/CDSRaBot/sadp-handler.GO/internal/adapter"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/fault"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/i18n"
+	"github.com/CDSRaBot/sadp-handler.GO/internal/logging"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/logic"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/parser"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/route"
@@ -302,6 +305,7 @@ type RuntimeUIConfig struct {
 
 type Dependencies struct {
 	Config           RuntimeUIConfig
+	Logger           *slog.Logger
 	Discovery        DiscoveryService
 	ISAPIDiscovery   ISAPIDiscoveryService
 	ISAPIStatus      ISAPIStatusService
@@ -376,6 +380,33 @@ func deviceMatches(device parser.Device, query string) bool {
 }
 
 func DispatchCommand(ctx context.Context, command Command, dependencies Dependencies) (CommandResult, error) {
+	if dependencies.Logger == nil {
+		return dispatchCommand(ctx, command, dependencies)
+	}
+	name := commandName(command)
+	if err := logging.Event(dependencies.Logger, slog.LevelInfo, "ui.command_started",
+		slog.String("command", name)); err != nil {
+		return dispatchFailure(name, FailureOperationFailed, "logging failed; command was not run", fmt.Errorf("log command start: %w", err))
+	}
+	result, commandErr := dispatchCommand(ctx, command, dependencies)
+	level := slog.LevelInfo
+	if commandErr != nil || !result.OK {
+		level = slog.LevelWarn
+	}
+	if err := logging.Event(dependencies.Logger, level, "ui.command_completed",
+		slog.String("command", name), slog.Bool("ok", result.OK)); err != nil {
+		if result.Error == nil {
+			result.OK = false
+			result.Error = &CommandFailure{Code: FailureOperationFailed, Message: "logging failed after command execution"}
+		} else {
+			result.Error.Message += "; logging failed"
+		}
+		return result, errors.Join(commandErr, fmt.Errorf("log command result: %w", err))
+	}
+	return result, commandErr
+}
+
+func dispatchCommand(ctx context.Context, command Command, dependencies Dependencies) (CommandResult, error) {
 	if ctx == nil {
 		return dispatchFailure("", FailureInvalidArgument, "context is nil", errors.New("context is nil"))
 	}
