@@ -112,6 +112,10 @@ target device; the observed salted/AES profile is not yet established.
   release acceptance also remain to be implemented and validated.
 - A beta release requires real-device testing on the supported models and
   firmware, native platform acceptance, and the signing decision above.
+- Validation of commit `c01dd8b` passed the full Go test suite and the full
+  race-enabled suite on Windows. A Linux amd64 executable was also built and
+  its `version` command ran under Kali Linux on WSL. This smoke test is not
+  Ubuntu acceptance and does not establish device compatibility.
 - The `cmd/package-beta` tool can build local, unsigned, explicitly unverified
   candidate archives and SHA-256 checksums. This is packaging preparation,
   not release approval or publication.
