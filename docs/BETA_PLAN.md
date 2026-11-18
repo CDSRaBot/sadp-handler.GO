@@ -78,6 +78,8 @@ target device; the observed salted/AES profile is not yet established.
   identity-verification component. The activation challenge uses the
   captured `PublicKey` envelope and rejects ambiguous challenge and status
   fields; passwords are validated before any request to prevent truncation.
+  A read-only activation-state preflight distinguishes active and inactive
+  states; it does not authenticate a device or authorize mutation.
   Generic user-field encryption, the captured session-login proof and
   security-question field-encryption/KDF format are available for confirmed
   schemas, but are not wired to user operations. These components are tested

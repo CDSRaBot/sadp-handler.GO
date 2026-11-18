@@ -115,3 +115,70 @@ func TestActivationStatusRejectsAmbiguousResponses(t *testing.T) {
 		})
 	}
 }
+
+func TestReadActivationStateDistinguishesInactiveFromMalformed(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		state   ISAPIActivationState
+		wantErr ErrorKind
+	}{
+		{"active", `<Status><Activated>true</Activated></Status>`, ISAPIActivationActive, ""},
+		{"active numeric", `<Status><Activated>1</Activated></Status>`, ISAPIActivationActive, ""},
+		{"inactive", `<Status><Activated>false</Activated></Status>`, ISAPIActivationInactive, ""},
+		{"inactive numeric", `<Status><Activated> 0 </Activated></Status>`, ISAPIActivationInactive, ""},
+		{"missing", `<Status/>`, 0, ErrorMalformed},
+		{"invalid", `<Status><Activated>unknown</Activated></Status>`, 0, ErrorMalformed},
+		{"ambiguous", `<Status><Activated>false</Activated><Activated>true</Activated></Status>`, 0, ErrorMalformed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if request.Method != http.MethodGet || request.URL.Path != "/SDK/activateStatus" {
+					t.Errorf("unexpected request %s %s", request.Method, request.URL.Path)
+					writer.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				_, _ = writer.Write([]byte(tt.payload))
+			}))
+			defer server.Close()
+			transport := &ISAPIHTTPTransport{BaseURL: server.URL}
+			state, err := transport.ReadActivationState(context.Background(), serverTarget(t, server))
+			if state != tt.state {
+				t.Fatalf("state=%d, want=%d", state, tt.state)
+			}
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			var routeErr *Error
+			if !errors.As(err, &routeErr) || routeErr.Kind != tt.wantErr {
+				t.Fatalf("error=%v, want=%s", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestReadActivationStateRejectsUnboundInterfaceAndCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("unexpected request")
+	}))
+	defer server.Close()
+	transport := &ISAPIHTTPTransport{BaseURL: server.URL}
+	target := serverTarget(t, server)
+	target.Interface = "interface-name"
+	_, err := transport.ReadActivationState(context.Background(), target)
+	var routeErr *Error
+	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorUnsupported {
+		t.Fatalf("interface error=%v", err)
+	}
+	target.Interface = ""
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = transport.ReadActivationState(ctx, target)
+	if !errors.As(err, &routeErr) || routeErr.Kind != ErrorCanceled {
+		t.Fatalf("cancellation error=%v", err)
+	}
+}

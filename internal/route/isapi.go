@@ -37,6 +37,13 @@ type ISAPIDeviceInfoVerifier struct {
 	Transport *ISAPIHTTPTransport
 }
 
+type ISAPIActivationState uint8
+
+const (
+	ISAPIActivationInactive ISAPIActivationState = iota + 1
+	ISAPIActivationActive
+)
+
 func (v ISAPIDeviceInfoVerifier) VerifyActivation(ctx context.Context, target Target, password string) error {
 	if v.Transport == nil || v.Transport.Username == "" || len(target.MAC) != 6 || password == "" {
 		return &Error{Kind: ErrorInvalidInput, Err: errors.New("device identity and credentials are required")}
@@ -476,22 +483,50 @@ func validateISAPIResponseStatus(payload []byte) error {
 }
 
 func (t *ISAPIHTTPTransport) status(ctx context.Context, base *url.URL, target Target) (Result, error) {
+	state, err := t.readActivationState(ctx, base)
+	result := Result{Operation: OperationStatus, Target: target, Protocol: "isapi"}
+	if err != nil {
+		return result, err
+	}
+	if state != ISAPIActivationActive {
+		return result, &Error{Kind: ErrorVerification, Err: errors.New("activation verification failed")}
+	}
+	return result, nil
+}
+
+// ReadActivationState is a read-only preflight signal, not proof of device
+// identity or a substitute for authenticated verification after activation.
+func (t *ISAPIHTTPTransport) ReadActivationState(ctx context.Context, target Target) (ISAPIActivationState, error) {
+	if ctx == nil || t == nil {
+		return 0, &Error{Kind: ErrorInvalidInput, Err: errors.New("ISAPI activation status dependencies are incomplete")}
+	}
+	if target.Interface != "" {
+		return 0, &Error{Kind: ErrorUnsupported, Err: errors.New("explicit ISAPI interface binding is not implemented")}
+	}
+	base, err := t.baseURL(target)
+	if err != nil {
+		return 0, err
+	}
+	return t.readActivationState(ctx, base)
+}
+
+func (t *ISAPIHTTPTransport) readActivationState(ctx context.Context, base *url.URL) (ISAPIActivationState, error) {
 	statusURL := base.ResolveReference(&url.URL{Path: "/SDK/activateStatus"})
 	payload, err := t.request(ctx, http.MethodGet, statusURL, nil)
 	if err != nil {
-		return Result{Operation: OperationStatus, Target: target, Protocol: "isapi"}, err
+		return 0, err
 	}
 	status, err := parseUniqueDirectText(payload, "", "Activated")
 	if err != nil {
-		return Result{Operation: OperationStatus, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI activation status is malformed")}
+		return 0, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI activation status is malformed")}
 	}
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "true", "1":
-		return Result{Operation: OperationStatus, Target: target, Protocol: "isapi"}, nil
+		return ISAPIActivationActive, nil
 	case "false", "0":
-		return Result{Operation: OperationStatus, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorVerification, Err: errors.New("activation verification failed")}
+		return ISAPIActivationInactive, nil
 	default:
-		return Result{Operation: OperationStatus, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI activation status is malformed")}
+		return 0, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI activation status is malformed")}
 	}
 }
 
