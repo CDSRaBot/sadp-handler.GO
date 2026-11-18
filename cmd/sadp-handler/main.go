@@ -14,6 +14,8 @@ import (
 	"github.com/CDSRaBot/sadp-handler.GO/internal/ui"
 )
 
+var version = "dev"
+
 func main() {
 	os.Exit(run())
 }
@@ -71,7 +73,7 @@ func run() int {
 			InterfaceLister:  session,
 			Locales:          locales,
 			Help:             app.DefaultEnglishCatalog()["ui.help"],
-			Version:          "dev",
+			Version:          version,
 		},
 		Closers: []io.Closer{logging.LogFile},
 	})

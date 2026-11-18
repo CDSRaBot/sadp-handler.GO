@@ -30,3 +30,21 @@ The Go implementation includes discovery and protocol components. SADP activatio
 ## Implementation status
 
 All repository filesystem paths in documentation, configuration, and build instructions are relative to the project root. Go package imports use the module path above. Do not treat the former starter-code layout or its placeholder APIs as implementation requirements. The Python reference's behavior is a local compatibility target, not an authoritative protocol specification; review the open gates in `docs/spec/SYSTEM.md` before claiming SADP compatibility.
+
+## Local beta candidates
+
+From a clean, committed worktree at the repository root, an operator can
+create unsigned, unverified local candidate archives (without publishing):
+
+```text
+go run ./cmd/package-beta --version v0.1.0-beta.1 --output PATH_TO_NEW_DIRECTORY
+```
+
+The output parent directory must exist and the output path must not. Tracked
+changes and untracked build inputs are rejected; an error during final copying
+can leave an incomplete output directory, which must not be used. The tool
+builds Windows, Linux and macOS amd64 archives and `SHA256SUMS`, including only
+the binary, tracked documentation, settings template, license and an explicit
+unverified-beta warning. It does not sign, publish or establish compatibility;
+the acceptance and release gates in the [beta plan](./docs/BETA_PLAN.md) remain
+mandatory.

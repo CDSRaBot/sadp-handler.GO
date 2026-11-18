@@ -94,3 +94,6 @@ target device; the observed salted/AES profile is not yet established.
   packaging also remain to be implemented and validated.
 - A beta release requires real-device testing on the supported models and
   firmware, native platform acceptance, and the signing decision above.
+- The `cmd/package-beta` tool can build local, unsigned, explicitly unverified
+  candidate archives and SHA-256 checksums. This is packaging preparation,
+  not release approval or publication.
