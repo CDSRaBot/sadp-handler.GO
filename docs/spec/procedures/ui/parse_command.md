@@ -23,8 +23,9 @@ func ParseConsoleCommand(line string) (Command, error)
 ## 3. Grammar
 
 ```text
-command        = discover | activate | network | language | help | version | quit | export-locale-template
+command        = discover | isapi-status | activate | network | language | help | version | quit | export-locale-template
 discover       = "discover" [interface-index]
+isapi-status   = "isapi-status" "--address" IP ["--port" PORT] ["--https"]
 activate       = "activate" [device-mac]
 network        = "network" [device-mac]
 language       = "language" ("list" | locale-code)
@@ -35,6 +36,8 @@ export-locale-template = "--export-locale-template" path
 ```
 
 - `interface-index` is a non-negative decimal interface index. Omission means use the interface currently selected in the TUI; if none is selected, dispatch reports an actionable error.
+- `isapi-status` reads the unauthenticated activation state at the explicitly
+  supplied address and displays that identity is unverified.
 - `device-mac` is a six-byte EUI-48 MAC accepted by M2 `NormalizeMAC`. If supplied, it is the sole target. If omitted, dispatch uses the current multi-selection, or the focused device when the selection is empty; an empty target set is an actionable error.
 - `language list` displays available locales. `language CODE` requests an exact runtime locale switch through M5.
 - `--export-locale-template PATH` exports the M5 locale template and is mutually exclusive with every other command.

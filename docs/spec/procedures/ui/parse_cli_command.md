@@ -50,8 +50,9 @@ quit
 ```
 
 - `discover` requires one eligible interface index and an explicit positive finite `--timeout` for each receive cycle. `--repeat` is an integer in `1..100` and defaults to `1`. Each cycle sends one probe immediately, receives continuously for its timeout, and starts the next cycle immediately after the preceding receive window. Receiving a device does not end a cycle. The total run is bounded by approximately `timeout × repeat` plus setup/cleanup overhead.
-- `isapi-discover` and `isapi-status` run only in one-shot mode and require an
-  explicit non-link-local unicast IP literal. Both use port 80 by default, or
+- `isapi-discover` runs only in one-shot mode; `isapi-status` also runs in
+  interactive consoles. Both require an explicit non-link-local unicast IP
+  literal and use port 80 by default, or
   443 with `--https`; a nonzero `--port` overrides it. Discovery additionally
   requires an EUI-48 MAC, username and redirected `--password-stdin` input.
   Basic authentication requires both `--basic` and `--https`. Status does not

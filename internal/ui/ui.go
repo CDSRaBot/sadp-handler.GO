@@ -306,7 +306,7 @@ func DispatchCommand(ctx context.Context, command Command, dependencies Dependen
 	case HelpCommand:
 		message := dependencies.Help
 		if message == "" {
-			message = "discover, isapi-discover (one-shot only), isapi-status (one-shot only), activate, network, language, help, version, quit"
+			message = "discover, isapi-discover (one-shot only), isapi-status, activate, network, language, help, version, quit"
 		}
 		return CommandResult{Command: "help", OK: true, Message: message}, nil
 	case VersionCommand:

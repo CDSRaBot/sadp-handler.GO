@@ -72,10 +72,12 @@ has not yet been established.
 
 ```text
 sadp-handler --ui=no --once isapi-status --address IP [--port PORT] [--https]
+# TUI console or CLI REPL:
+isapi-status --address IP [--port PORT] [--https]
 ```
 
 Read the activation state of an explicitly specified non-link-local unicast IP
-using `GET /SDK/activateStatus`. This one-shot read-only command does not read
+using `GET /SDK/activateStatus`. This read-only command does not read
 a password or activate a device. Ports default to 80 for HTTP and 443 for
 HTTPS; HTTPS uses the system trust store.
 

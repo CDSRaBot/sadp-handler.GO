@@ -117,6 +117,8 @@ func (m TUIModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = message.result.Error.Message
 		} else if message.err != nil {
 			m.status = fmt.Sprintf("command failed: %v", message.err)
+		} else if message.result.ISAPIStatus != nil {
+			m.status = formatISAPIStatus(*message.result.ISAPIStatus)
 		} else {
 			m.status = message.result.Message
 		}

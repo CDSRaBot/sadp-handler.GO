@@ -150,9 +150,10 @@ func DispatchCommand(
 
 `NetworkConfig` is the typed M3 configuration contract, not a separate M4 model. `Dependencies` supplies the application services used by dispatch, including a TUI-owned discovery-session manager. Command variants are closed to the M4 package; both parsers construct these variants. `DispatchCommand` must be the only common command-to-workflow routing boundary.
 
-- ISAPI discovery and status execute only in one-shot CLI mode. Discovery
-  requires authenticated matching MAC identity; status is a read-only,
-  unauthenticated signal with `identity_verified=false`, not mutation authority.
+- ISAPI discovery executes only in one-shot CLI mode and requires authenticated
+  matching MAC identity. Status is available in one-shot, TUI and REPL; it is
+  a read-only, unauthenticated signal with `identity_verified=false`, not
+  mutation authority.
 - `PasswordFromPrompt` is used by the TUI's masked prompt; `PasswordFromStdin` is used by CLI `--password-stdin`. Neither source is read until all command, target, confirmation, and implementation-gate checks succeed.
 - `LanguageList` lists available locales; if M5 returns `ErrNoExternalLocales` with `["en"]`, treat that as a successful built-in-English-only result (`OK=true`). `LanguageSwitch` uses the exact `Code` value. A switch does not persist settings.
 - `TargetSelector` must select exactly one strategy: one or more explicit `MACs`, `UseTUISelection`, or `UseFocusedDevice`. Reject empty or conflicting selectors; resolution confirms the selected devices exist before any secret input.

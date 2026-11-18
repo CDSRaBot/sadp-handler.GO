@@ -72,11 +72,13 @@ sadp-handler --ui=no --once isapi-discover --address 192.0.2.10 --device 00:01:0
 
 ```text
 sadp-handler --ui=no --once isapi-status --address IP [--port PORT] [--https]
+# Консоль TUI или CLI REPL:
+isapi-status --address IP [--port PORT] [--https]
 ```
 
 Прочитать состояние активации по явно указанному unicast IP без link-local
-адресов через `GET /SDK/activateStatus`. Команда доступна только в one-shot
-режиме, не считывает пароль и не активирует устройство. Порт по умолчанию —
+адресов через `GET /SDK/activateStatus`. Команда не считывает пароль и не
+активирует устройство. Порт по умолчанию —
 80 для HTTP и 443 для HTTPS; сертификат HTTPS проверяется по системному
 хранилищу доверия.
 

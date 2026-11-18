@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/netip"
 	"strconv"
@@ -67,9 +68,6 @@ func dispatchISAPIStatus(ctx context.Context, command ISAPIStatusCommand, depend
 	if err := validateISAPIStatus(command); err != nil {
 		return dispatchFailure("isapi-status", FailureInvalidArgument, "invalid ISAPI status command", err)
 	}
-	if !dependencies.Config.Once || dependencies.Config.Mode != "no" {
-		return dispatchFailure("isapi-status", FailureUnsupported, "ISAPI status requires one-shot CLI mode", errors.New("ISAPI status requires one-shot CLI mode"))
-	}
 	if dependencies.ISAPIStatus == nil {
 		return dispatchUnsupported("isapi-status")
 	}
@@ -82,6 +80,10 @@ func dispatchISAPIStatus(ctx context.Context, command ISAPIStatusCommand, depend
 		return dispatchFailure("isapi-status", fault.MalformedResponse, "invalid ISAPI status result", errors.New("invalid ISAPI status result"))
 	}
 	return CommandResult{Command: "isapi-status", OK: true, ISAPIStatus: &result}, nil
+}
+
+func formatISAPIStatus(status ISAPIStatusResult) string {
+	return fmt.Sprintf("%s state=%s identity=unverified", status.Address, status.State)
 }
 
 type ISAPIKnownAddressStatusService struct {

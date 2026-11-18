@@ -110,7 +110,7 @@ func (f isapiStatusServiceFunc) ReadISAPIStatus(ctx context.Context, cmd ISAPISt
 	return f(ctx, cmd)
 }
 
-func TestISAPIStatusRejectsInteractiveAndInvalidServiceResults(t *testing.T) {
+func TestISAPIStatusRejectsInvalidServiceResults(t *testing.T) {
 	command, err := ParseCLICommand([]string{"isapi-status", "--address", "192.0.2.1"})
 	if err != nil {
 		t.Fatal(err)
@@ -119,10 +119,6 @@ func TestISAPIStatusRejectsInteractiveAndInvalidServiceResults(t *testing.T) {
 		return ISAPIStatusResult{Address: "192.0.2.1", State: "active", IdentityVerified: true}, nil
 	})
 	result, err := DispatchCommand(context.Background(), command, Dependencies{Config: RuntimeUIConfig{Mode: "no"}, ISAPIStatus: service})
-	if err == nil || result.Error == nil || result.Error.Code != FailureUnsupported {
-		t.Fatalf("interactive mode accepted: %+v, %v", result, err)
-	}
-	result, err = DispatchCommand(context.Background(), command, Dependencies{Config: RuntimeUIConfig{Mode: "no", Once: true}, ISAPIStatus: service})
 	if err == nil || result.ISAPIStatus != nil || result.Error == nil {
 		t.Fatalf("invalid service result accepted: %+v, %v", result, err)
 	}

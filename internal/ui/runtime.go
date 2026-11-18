@@ -260,7 +260,7 @@ func writeTextResult(writer io.Writer, result CommandResult) error {
 		}
 	}
 	if status := result.ISAPIStatus; status != nil {
-		if _, err := fmt.Fprintf(writer, "%s state=%s identity=unverified\n", status.Address, status.State); err != nil {
+		if _, err := fmt.Fprintln(writer, formatISAPIStatus(*status)); err != nil {
 			return err
 		}
 	}

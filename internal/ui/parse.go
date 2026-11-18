@@ -130,6 +130,8 @@ func ParseConsoleCommand(line string) (Command, error) {
 		return DiscoverCommand{InterfaceIndex: &index}, nil
 	case "activate":
 		return parseConsoleTarget(args, true)
+	case "isapi-status":
+		return parseISAPIStatus(args)
 	case "network":
 		return parseConsoleTarget(args, false)
 	case "language":

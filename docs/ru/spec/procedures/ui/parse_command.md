@@ -23,8 +23,9 @@ func ParseConsoleCommand(line string) (Command, error)
 ## 3. Грамматика
 
 ```text
-command        = discover | activate | network | language | help | version | quit | export-locale-template
+command        = discover | isapi-status | activate | network | language | help | version | quit | export-locale-template
 discover       = "discover" [interface-index]
+isapi-status   = "isapi-status" "--address" IP ["--port" PORT] ["--https"]
 activate       = "activate" [device-mac]
 network        = "network" [device-mac]
 language       = "language" ("list" | locale-code)
@@ -35,6 +36,8 @@ export-locale-template = "--export-locale-template" path
 ```
 
 - `interface-index` — неотрицательный десятичный индекс интерфейса. Если он не указан, использовать интерфейс, явно выбранный в TUI; если интерфейс не выбран, диспетчеризация возвращает понятную ошибку.
+- `isapi-status` читает неаутентифицированное состояние активации по указанному
+  адресу и показывает, что личность устройства не подтверждена.
 - `device-mac` — шестибайтовый MAC EUI-48, принимаемый M2 `NormalizeMAC`. Если указан, это единственная цель. Если не указан, использовать текущий множественный выбор, а при пустом выборе — устройство в фокусе; пустой набор целей является понятной ошибкой.
 - `language list` отображает доступные локали. `language CODE` запрашивает точное переключение локали во время работы через M5.
 - `--export-locale-template PATH` экспортирует шаблон локали через M5 и несовместим с любой другой командой.
