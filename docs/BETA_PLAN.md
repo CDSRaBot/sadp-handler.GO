@@ -82,12 +82,15 @@ target device; the observed salted/AES profile is not yet established.
   security-question field-encryption/KDF format are available for confirmed
   schemas, but are not wired to user operations. These components are tested
   with synthetic data, not yet verified on physical devices.
+- Read-only authenticated ISAPI discovery by explicit IP and MAC is wired to
+  the one-shot CLI. It requires redirected password input, checks reachability
+  and matching identity, and has not been tested on physical devices.
 - ISAPI network workflow orchestration is covered by synthetic tests but has
   no verified device-specific profile, automatic reboot or executable
   integration. Static-address and SADP-assisted DHCP reappearance locators
   authenticate the candidate's ISAPI identity, but have not been validated
   on physical devices. Explicit interface binding, user and terminal
-  management, secure UI credential input, bulk workflows and release
+  management, interactive UI credential input, bulk workflows and release
   packaging also remain to be implemented and validated.
 - A beta release requires real-device testing on the supported models and
   firmware, native platform acceptance, and the signing decision above.

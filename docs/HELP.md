@@ -42,6 +42,32 @@ discover --interface 4 --timeout 5s
 discover --interface 4 --timeout 3s --repeat 5
 ```
 
+### `isapi-discover`
+
+```text
+sadp-handler --ui=no --once isapi-discover --address IP --device MAC --username USER --password-stdin [--port PORT] [--https] [--basic]
+```
+
+Read device information from one explicitly specified IP address and verify its
+MAC using authenticated ISAPI. This read-only command is available only in
+one-shot mode; it neither changes the device nor discovers unknown addresses.
+The address must be a non-link-local unicast IP literal, and the MAC an EUI-48.
+The default port is 80, or 443 with `--https`. TLS certificates are verified
+using the system trust store. `--basic` explicitly enables Basic authentication
+and requires `--https`; Digest is preferred when offered.
+
+Redirect one UTF-8 password line to stdin (maximum 4096 bytes); terminal stdin
+is rejected. Do not put passwords in arguments, shell history, or logs. For
+example, use a securely managed secret file with input redirection:
+
+```text
+sadp-handler --ui=no --once isapi-discover --address 192.0.2.10 --device 00:01:02:03:04:05 --username admin --password-stdin --https < password-file
+```
+
+The JSON result contains `isapi_device` with the verified MAC, address, model,
+serial number and firmware version when provided. Physical-device compatibility
+has not yet been established.
+
 ### `activate`
 
 ```text

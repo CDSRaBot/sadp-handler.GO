@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/netip"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +21,16 @@ type Command interface{ isCommand() }
 type DiscoverCommand struct {
 	InterfaceIndex *int
 	Policy         DiscoveryPolicy
+}
+
+type ISAPIDiscoverCommand struct {
+	Address       netip.Addr
+	MAC           net.HardwareAddr
+	Port          uint16
+	Username      string
+	HTTPS         bool
+	AllowBasic    bool
+	PasswordInput PasswordSource
 }
 
 type DiscoveryPolicy struct {
@@ -57,6 +68,7 @@ type ExportLocaleTemplateCommand struct {
 }
 
 func (DiscoverCommand) isCommand()             {}
+func (ISAPIDiscoverCommand) isCommand()        {}
 func (ActivateCommand) isCommand()             {}
 func (NetworkCommand) isCommand()              {}
 func (LanguageCommand) isCommand()             {}
@@ -86,15 +98,24 @@ const (
 )
 
 type CommandResult struct {
-	Command   string             `json:"command,omitempty"`
-	OK        bool               `json:"ok"`
-	Exit      bool               `json:"exit,omitempty"`
-	Message   string             `json:"message,omitempty"`
-	Discovery []DiscoveredDevice `json:"discovery,omitempty"`
-	Devices   []DeviceOutcome    `json:"devices,omitempty"`
-	Locales   []string           `json:"locales,omitempty"`
-	Version   string             `json:"version,omitempty"`
-	Error     *CommandFailure    `json:"error,omitempty"`
+	Command     string                 `json:"command,omitempty"`
+	OK          bool                   `json:"ok"`
+	Exit        bool                   `json:"exit,omitempty"`
+	Message     string                 `json:"message,omitempty"`
+	Discovery   []DiscoveredDevice     `json:"discovery,omitempty"`
+	ISAPIDevice *ISAPIDiscoveredDevice `json:"isapi_device,omitempty"`
+	Devices     []DeviceOutcome        `json:"devices,omitempty"`
+	Locales     []string               `json:"locales,omitempty"`
+	Version     string                 `json:"version,omitempty"`
+	Error       *CommandFailure        `json:"error,omitempty"`
+}
+
+type ISAPIDiscoveredDevice struct {
+	MAC             string `json:"mac"`
+	Address         string `json:"address"`
+	Model           string `json:"model,omitempty"`
+	SerialNumber    string `json:"serial_number,omitempty"`
+	FirmwareVersion string `json:"firmware_version,omitempty"`
 }
 
 type DiscoveredDevice struct {
@@ -128,6 +149,10 @@ const (
 
 type DiscoveryService interface {
 	Discover(context.Context, *int, DiscoveryPolicy) ([]DiscoveredDevice, error)
+}
+
+type ISAPIDiscoveryService interface {
+	DiscoverISAPI(context.Context, ISAPIDiscoverCommand) (ISAPIDiscoveredDevice, error)
 }
 
 type DiscoverySession interface {
@@ -168,6 +193,7 @@ type RuntimeUIConfig struct {
 type Dependencies struct {
 	Config           RuntimeUIConfig
 	Discovery        DiscoveryService
+	ISAPIDiscovery   ISAPIDiscoveryService
 	DiscoverySession DiscoverySessionService
 	InterfaceLister  InterfaceLister
 	InterfaceIndex   *int
@@ -248,6 +274,8 @@ func DispatchCommand(ctx context.Context, command Command, dependencies Dependen
 	switch value := command.(type) {
 	case DiscoverCommand:
 		return dispatchDiscover(ctx, value, dependencies)
+	case ISAPIDiscoverCommand:
+		return dispatchISAPIDiscover(ctx, value, dependencies)
 	case ActivateCommand:
 		return dispatchActivate(ctx, value, dependencies)
 	case NetworkCommand:
@@ -257,7 +285,7 @@ func DispatchCommand(ctx context.Context, command Command, dependencies Dependen
 	case HelpCommand:
 		message := dependencies.Help
 		if message == "" {
-			message = "discover, activate, network, language, help, version, quit"
+			message = "discover, isapi-discover (one-shot only), activate, network, language, help, version, quit"
 		}
 		return CommandResult{Command: "help", OK: true, Message: message}, nil
 	case VersionCommand:
@@ -439,6 +467,8 @@ func commandName(command Command) string {
 	switch command.(type) {
 	case DiscoverCommand:
 		return "discover"
+	case ISAPIDiscoverCommand:
+		return "isapi-discover"
 	case ActivateCommand:
 		return "activate"
 	case NetworkCommand:

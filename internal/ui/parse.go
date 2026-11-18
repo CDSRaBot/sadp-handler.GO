@@ -94,6 +94,8 @@ func ParseCLICommand(args []string) (Command, error) {
 		return parseLanguage(args)
 	case "discover":
 		return parseDiscover(args)
+	case "isapi-discover":
+		return parseISAPIDiscover(args)
 	case "activate":
 		return parseActivate(args)
 	case "network":

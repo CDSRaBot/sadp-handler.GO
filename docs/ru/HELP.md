@@ -42,6 +42,32 @@ discover --interface 4 --timeout 5s
 discover --interface 4 --timeout 3s --repeat 5
 ```
 
+### `isapi-discover`
+
+```text
+sadp-handler --ui=no --once isapi-discover --address IP --device MAC --username USER --password-stdin [--port PORT] [--https] [--basic]
+```
+
+Прочитать сведения одного устройства по явно заданному IP и проверить его MAC
+через аутентифицированный ISAPI. Команда доступна только в one-shot режиме,
+не изменяет устройство и не ищет неизвестные адреса. Требуется unicast IP без
+link-local адресов и MAC формата EUI-48. Порт по умолчанию — 80, с `--https` —
+443. Сертификат TLS проверяется по системному хранилищу доверия. Параметр
+`--basic` явно разрешает Basic только с `--https`; при наличии Digest он
+предпочитается.
+
+Передайте одну строку пароля UTF-8 через перенаправленный stdin (не более 4096
+байт); терминальный stdin отклоняется. Не указывайте пароли в аргументах,
+истории команд и журналах. Пример с защищённым файлом секрета:
+
+```text
+sadp-handler --ui=no --once isapi-discover --address 192.0.2.10 --device 00:01:02:03:04:05 --username admin --password-stdin --https < password-file
+```
+
+Результат JSON содержит `isapi_device` с проверенными MAC и адресом, а также
+моделью, серийным номером и версией прошивки, если они предоставлены.
+Совместимость с физическими устройствами ещё не подтверждена.
+
 ### `activate`
 
 ```text
