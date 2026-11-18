@@ -29,6 +29,10 @@ type WorkflowActivationService struct {
 	Passwords PasswordProvider
 }
 
+func (WorkflowActivationService) SADPActivationDisabled() bool {
+	return true
+}
+
 func (s WorkflowActivationService) Activate(ctx context.Context, command ActivateCommand) ([]DeviceOutcome, error) {
 	return nil, ErrSADPActivationDisabled
 }

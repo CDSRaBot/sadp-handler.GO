@@ -68,7 +68,8 @@ target device; the observed salted/AES profile is not yet established.
 
 - SADP activation is blocked in the UI workflow and route selector. The
   executable still reports activation unavailable; it does not yet invoke the
-  ISAPI replacement.
+  ISAPI replacement. TUI and REPL show the disabled message before requiring a
+  target, confirmation or password.
 - SADP discovery is available through the TUI session and bounded CLI
   snapshots. CLI snapshots combine repeated advertisements by MAC and sender
   address and report discovery errors alongside any partial results.

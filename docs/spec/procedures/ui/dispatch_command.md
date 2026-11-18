@@ -178,12 +178,17 @@ func DispatchCommand(
   then starts the next cycle immediately. A received device does not shorten a
   cycle.
 - An absent TUI interface index is resolved from the explicitly selected interface before dispatch; absence is an actionable error. CLI requires the index during parsing.
-- For TUI mutation commands, an explicit MAC targets that device. Otherwise resolve all currently selected devices; if selection is empty, resolve the focused device. Reject an empty/unavailable target set before collecting a password or dispatching a mutation.
+- For available TUI mutation workflows, an explicit MAC targets that device. Otherwise resolve all currently selected devices; if selection is empty, resolve the focused device. Reject an empty/unavailable target set before collecting a password or dispatching a mutation.
 - For CLI mutation commands, resolve every explicitly supplied MAC against the current device inventory. Reject unknown or ambiguous targets; never silently skip a target. Preserve input order for per-device outcomes.
 - Require explicit confirmation for two or more mutation targets. The TUI presents a confirmation showing the exact target set; CLI parsing requires `--yes` for multiple targets and does not prompt in one-shot mode.
 - Preserve one `DeviceOutcome` per requested target, with status and a safe error summary. Do not collapse a partial batch result into overall success. `CommandResult.OK` is true only if the command succeeds for all requested targets.
 - `help`, `version`, `quit`, `language`, and template export route through their corresponding M4/M5 service. `quit` is an REPL control result; in one-shot it succeeds without starting another command.
-- Until the approved challenge, transport, response-parsing, and correlation contracts are implemented and their procedure-derived tests pass, `ActivateCommand` and `NetworkCommand` return `CommandFailure{Code:"unsupported"}` before resolving secrets, reading password input, prompting, or opening sockets. This is an implementation gate; the selected activation SADP XML variant and confirmed challenge-response calculation are not protocol gates.
+- SADP activation is disabled. When no activation service is available, TUI and
+  REPL show the explicit unavailable result before target resolution,
+  confirmation, secret input or network access. In `isapi_only` mode the
+  unavailable ISAPI workflow is reported instead. One-shot CLI arguments are
+  still validated during parsing. Network and ISAPI activation are not yet
+  connected to the executable.
 - Use the declared stable failure codes `invalid_argument`, `unsupported`, `operation_failed`, and `canceled`. `CommandFailure` is the typed result-level contract for caller/UI branching; sanitize `Message` so it cannot expose secrets, raw payloads, or sensitive filesystem contents.
 
 ## 4. Discovery Aggregation

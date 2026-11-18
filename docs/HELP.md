@@ -167,6 +167,10 @@ quit
 
 - If `discover` has no index, it uses the interface explicitly selected in the TUI; otherwise it uses the specified interface. The TUI sends the first probe immediately, then sends another every 60 seconds while continuing to receive advertisements until canceled.
 - For `activate` and `network`, MAC is optional: without it, the selected devices are targeted, or the focused device if none are selected. Before a bulk operation, the TUI must show the targets and request confirmation.
+- While activation is unavailable, the TUI and CLI REPL report disabled SADP
+  activation (or the unavailable ISAPI workflow in `isapi_only` mode) without
+  requiring a selected device, confirmation, password input, or network access.
+  One-shot commands still require the documented CLI syntax.
 - Quoting and shell syntax are not supported; input is split on whitespace. The console never invokes a shell.
 
 ## Process exit and errors

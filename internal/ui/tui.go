@@ -113,10 +113,10 @@ func (m TUIModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = message.Width, message.Height
 		m.resize()
 	case tuiCommandResultMsg:
-		if message.err != nil {
-			m.status = fmt.Sprintf("command failed: %v", message.err)
-		} else if message.result.Error != nil {
+		if message.result.Error != nil {
 			m.status = message.result.Error.Message
+		} else if message.err != nil {
+			m.status = fmt.Sprintf("command failed: %v", message.err)
 		} else {
 			m.status = message.result.Message
 		}
@@ -469,6 +469,10 @@ func (m *TUIModel) submitConsole() tea.Cmd {
 	if err := m.state.AddHistory(line); err != nil {
 		m.status = "command was not stored in history"
 		return nil
+	}
+	if _, ok := command.(ActivateCommand); ok &&
+		(m.dependencies.Activation == nil || sadpActivationDisabled(m.dependencies.Activation)) {
+		return m.runCommand(command)
 	}
 	resolved, err := ResolveTUICommand(m.state, command)
 	if err != nil {

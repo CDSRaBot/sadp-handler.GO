@@ -357,8 +357,8 @@ func dispatchDiscover(ctx context.Context, command DiscoverCommand, dependencies
 }
 
 func dispatchActivate(ctx context.Context, command ActivateCommand, dependencies Dependencies) (CommandResult, error) {
-	if err := validateMutationCommand(command.Targets, command.PasswordInput, command.Confirm); err != nil {
-		return dispatchFailure("activate", FailureInvalidArgument, "invalid activation command", err)
+	if sadpActivationDisabled(dependencies.Activation) {
+		return dispatchFailure("activate", FailureUnsupported, ErrSADPActivationDisabled.Error(), ErrSADPActivationDisabled)
 	}
 	if dependencies.Activation == nil {
 		if dependencies.Config.Protocol != "isapi_only" {
@@ -366,11 +366,19 @@ func dispatchActivate(ctx context.Context, command ActivateCommand, dependencies
 		}
 		return dispatchUnsupported("activate")
 	}
+	if err := validateMutationCommand(command.Targets, command.PasswordInput, command.Confirm); err != nil {
+		return dispatchFailure("activate", FailureInvalidArgument, "invalid activation command", err)
+	}
 	outcomes, err := dependencies.Activation.Activate(ctx, command)
 	if errors.Is(err, ErrSADPActivationDisabled) {
 		return mutationFailure("activate", FailureUnsupported, ErrSADPActivationDisabled.Error(), outcomes, err)
 	}
 	return dispatchMutationResult(ctx, "activate", command.Targets, outcomes, err)
+}
+
+func sadpActivationDisabled(service ActivationService) bool {
+	disabled, ok := service.(interface{ SADPActivationDisabled() bool })
+	return ok && disabled.SADPActivationDisabled()
 }
 
 func dispatchNetwork(ctx context.Context, command NetworkCommand, dependencies Dependencies) (CommandResult, error) {
