@@ -14,6 +14,7 @@ import (
 	"github.com/CDSRaBot/sadp-handler.GO/internal/i18n"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/logic"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/parser"
+	"github.com/CDSRaBot/sadp-handler.GO/internal/route"
 )
 
 type Command interface{ isCommand() }
@@ -41,6 +42,14 @@ type ISAPINetworkCommand struct {
 	Plan               logic.NetworkConfig
 	DiscoveryInterface int
 	Confirm            bool
+}
+
+type ISAPIUserCommand struct {
+	Connection ISAPIDiscoverCommand
+	Operation  route.ISAPIUserOperation
+	ID         string
+	Name       string
+	Confirm    bool
 }
 
 type ISAPIStatusCommand struct {
@@ -87,6 +96,7 @@ func (DiscoverCommand) isCommand()             {}
 func (ISAPIDiscoverCommand) isCommand()        {}
 func (ISAPIActivateCommand) isCommand()        {}
 func (ISAPINetworkCommand) isCommand()         {}
+func (ISAPIUserCommand) isCommand()            {}
 func (ISAPIStatusCommand) isCommand()          {}
 func (ActivateCommand) isCommand()             {}
 func (NetworkCommand) isCommand()              {}
@@ -126,6 +136,7 @@ type CommandResult struct {
 	ISAPIStatus     *ISAPIStatusResult     `json:"isapi_status,omitempty"`
 	ISAPIActivation *ISAPIActivationResult `json:"isapi_activation,omitempty"`
 	ISAPINetwork    *ISAPINetworkResult    `json:"isapi_network,omitempty"`
+	ISAPIUser       *ISAPIUserResult       `json:"isapi_user,omitempty"`
 	Devices         []DeviceOutcome        `json:"devices,omitempty"`
 	Locales         []string               `json:"locales,omitempty"`
 	Version         string                 `json:"version,omitempty"`
@@ -152,6 +163,15 @@ type ISAPINetworkResult struct {
 	Verified        bool   `json:"verified"`
 	RestartRequired bool   `json:"restart_required"`
 	ObservedAddress string `json:"observed_address,omitempty"`
+}
+
+type ISAPIUserResult struct {
+	Address   string                   `json:"address"`
+	MAC       string                   `json:"mac"`
+	Operation route.ISAPIUserOperation `json:"operation"`
+	ID        string                   `json:"id"`
+	Attempted bool                     `json:"attempted"`
+	Verified  bool                     `json:"verified"`
 }
 
 type ISAPIDiscoveredDevice struct {
@@ -211,6 +231,10 @@ type ISAPINetworkService interface {
 	ConfigureISAPINetwork(context.Context, ISAPINetworkCommand) (ISAPINetworkResult, error)
 }
 
+type ISAPIUserService interface {
+	ConfigureISAPIUser(context.Context, ISAPIUserCommand) (ISAPIUserResult, error)
+}
+
 type DiscoverySession interface {
 	Events() <-chan DiscoveredDevice
 	Errors() <-chan error
@@ -253,6 +277,7 @@ type Dependencies struct {
 	ISAPIStatus      ISAPIStatusService
 	ISAPIActivation  ISAPIActivationService
 	ISAPINetwork     ISAPINetworkService
+	ISAPIUser        ISAPIUserService
 	DiscoverySession DiscoverySessionService
 	InterfaceLister  InterfaceLister
 	InterfaceIndex   *int
@@ -341,6 +366,8 @@ func DispatchCommand(ctx context.Context, command Command, dependencies Dependen
 		return dispatchISAPIActivate(ctx, value, dependencies)
 	case ISAPINetworkCommand:
 		return dispatchISAPINetwork(ctx, value, dependencies)
+	case ISAPIUserCommand:
+		return dispatchISAPIUser(ctx, value, dependencies)
 	case ActivateCommand:
 		return dispatchActivate(ctx, value, dependencies)
 	case NetworkCommand:
@@ -350,7 +377,7 @@ func DispatchCommand(ctx context.Context, command Command, dependencies Dependen
 	case HelpCommand:
 		message := dependencies.Help
 		if message == "" {
-			message = "discover, isapi-discover (one-shot only), isapi-status, isapi-activate and isapi-network (one-shot only, disabled), activate, network, language, help, version, quit"
+			message = "discover, isapi-discover (one-shot only), isapi-status, isapi-activate, isapi-network and isapi-user (one-shot only, disabled), activate, network, language, help, version, quit"
 		}
 		return CommandResult{Command: "help", OK: true, Message: message}, nil
 	case VersionCommand:
@@ -546,6 +573,8 @@ func commandName(command Command) string {
 		return "isapi-activate"
 	case ISAPINetworkCommand:
 		return "isapi-network"
+	case ISAPIUserCommand:
+		return "isapi-user"
 	case ISAPIStatusCommand:
 		return "isapi-status"
 	case ActivateCommand:

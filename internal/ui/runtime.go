@@ -274,6 +274,12 @@ func writeTextResult(writer io.Writer, result CommandResult) error {
 				network.Address, network.MAC, network.Attempted, network.Verified, network.RestartRequired); err != nil {
 				return err
 			}
+			if user := result.ISAPIUser; user != nil {
+				if _, err := fmt.Fprintf(writer, "%s %s operation=%s id=%s attempted=%t verified=%t\n",
+					user.Address, user.MAC, user.Operation, user.ID, user.Attempted, user.Verified); err != nil {
+					return err
+				}
+			}
 			if network.ObservedAddress != "" {
 				if _, err := fmt.Fprintf(writer, " observed_address=%s", network.ObservedAddress); err != nil {
 					return err

@@ -126,6 +126,29 @@ unverified change may have succeeded; inspect the device before retrying. A
 required restart is reported but never performed automatically. The returned
 address is checked against authenticated device identity and configuration.
 
+### `isapi-user`
+
+```text
+sadp-handler --ui=no --once isapi-user --address IP --device MAC --username ADMIN --password-stdin --user-id ID --user-name NAME (--create | --update) --yes [--port PORT] [--https] [--basic]
+```
+
+This one-shot encrypted user-management path is **disabled in the executable**
+until a device-specific capability, XML schema, key source and authenticated
+identity profile are verified. It fails before credential input or network
+access. It has only been tested against synthetic devices.
+
+If enabled in a future version, redirect one UTF-8 JSON line (at most 4096
+bytes) containing exactly the string fields `admin_password` and
+`user_password`. Do not put either password in arguments, shell history,
+environment variables or logs. `--yes` explicitly confirms the operation;
+the numeric user ID must be positive and fit in 32 bits. Basic authentication
+requires explicit `--basic` and `--https`.
+
+The `isapi_user` result includes `attempted` and `verified`. If a write was
+attempted but not verified, the device state may be unknown; inspect it before
+retrying. A success requires an authenticated identity check and user-state
+verification; it does not reveal the password.
+
 ### `activate`
 
 ```text

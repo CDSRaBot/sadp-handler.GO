@@ -87,8 +87,10 @@ target device; the observed salted/AES profile is not yet established.
   its result is unknown. No production gate has been established.
   Generic user-field encryption, the captured session-login proof and
   security-question field-encryption/KDF format are available for confirmed
-  schemas, but are not wired to user operations. These components are tested
-  with synthetic data, not yet verified on physical devices.
+  schemas. A one-shot user create/update path is wired behind an injected
+  capability/schema/key profile and has synthetic end-to-end tests, but no
+  production profile exists. Recovery-question encryption is not wired to an
+  endpoint. These components are not yet verified on physical devices.
 - Read-only authenticated ISAPI discovery by explicit IP and MAC is wired to
   the one-shot CLI. It requires redirected password input, checks reachability
   and matching identity, and has not been tested on physical devices.

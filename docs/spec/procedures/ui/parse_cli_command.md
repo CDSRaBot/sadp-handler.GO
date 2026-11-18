@@ -40,6 +40,7 @@ discover --interface INDEX --timeout DURATION [--repeat COUNT]
 isapi-discover --address IP --device MAC --username USER --password-stdin [--port PORT] [--https] [--basic]
 isapi-activate --address IP --device MAC --username USER --password-stdin [--port PORT] [--https] [--basic]
 isapi-network --address IP --device MAC --username USER --password-stdin --interface-id ID --yes (--new-address IPv4/PREFIX --gateway IPv4 | --dhcp --discovery-interface INDEX) [--port PORT] [--https] [--basic]
+isapi-user --address IP --device MAC --username ADMIN --password-stdin --user-id ID --user-name NAME (--create | --update) --yes [--port PORT] [--https] [--basic]
 isapi-status --address IP [--port PORT] [--https]
 activate --device MAC [--device MAC ...] --password-stdin [--email EMAIL] [--yes]
 network --device MAC [--device MAC ...] --password-stdin (--dhcp | --address IPv4/PREFIX --gateway IPv4) [--yes]
@@ -68,6 +69,11 @@ quit
   discovery interface. Static subnet and broadcast addresses are rejected.
   The executable has no verified network profile and rejects the command before
   password input or network access.
+- `isapi-user` requires explicit `--yes`, create or update, a positive
+  32-bit numeric user ID and a non-secret name. Its redirected input is one
+  JSON line containing exactly `admin_password` and `user_password`; never
+  accept those secrets as arguments. The executable has no verified user
+  profile and rejects the command before input or network access.
 - `activate` and `network` accept one or more repeatable `--device MAC` options. Each MAC must be a valid six-byte EUI-48 address; reject duplicates after normalization. Require `--yes` when there are two or more target MACs. With one target, no confirmation prompt is issued in one-shot mode.
 - `--password-stdin` marks standard input as the password source. In the REPL, read it with terminal echo disabled; in one-shot mode, read one password line from stdin, including when stdin is redirected. Do not read the password while these workflows are behind the implementation gate; after they become supported, read the secret only after command, target, and confirmation validation. Never accept passwords in an ordinary option value, command argument, environment variable, rendered history, or diagnostic.
 - Network configuration requires exactly one of `--dhcp` and `--address`. Static `--address` requires `--gateway`; `--gateway` is forbidden with `--dhcp`. CIDR defines the address and prefix.

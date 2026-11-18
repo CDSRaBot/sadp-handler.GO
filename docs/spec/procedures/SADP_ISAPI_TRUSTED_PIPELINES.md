@@ -627,6 +627,13 @@ encrypted user management, AES-256, or the same XML user schema.
 
 ### Stages
 
+The Go one-shot `isapi-user` path implements create/update orchestration and
+encrypted single-password payload construction behind an injected profile.
+It checks the authenticated target before and after the write, reports an
+attempted mutation separately from verification, and uses synthetic tests.
+There is no production profile or verified key source; the executable rejects
+the operation before reading credentials or contacting the device.
+
 | Stage | Action | Required output | Failure gate |
 |---|---|---|---|
 | G1 | Discover capability and select the user operation | Supported endpoint, XML schema, sensitive nodes, and security scheme | Stop if the device does not advertise a compatible encrypted-user procedure |

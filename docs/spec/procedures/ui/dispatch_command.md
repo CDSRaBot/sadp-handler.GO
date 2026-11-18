@@ -167,6 +167,11 @@ func DispatchCommand(
   without authenticated identity and network postcondition checks. The
   executable has no verified profile and refuses the operation before password
   or network access.
+- One-shot `isapi-user` requires explicit confirmation, a verified capability,
+  device-specific encryption key source and schema, authenticated device
+  identity, and a user-state postcondition. It preserves attempted write status
+  when the outcome is uncertain; credentials and ciphertext are not output.
+  Without a verified profile the executable refuses it before input or network.
 - `PasswordFromPrompt` is used by the TUI's masked prompt; `PasswordFromStdin` is used by CLI `--password-stdin`. Neither source is read until all command, target, confirmation, and implementation-gate checks succeed.
 - `LanguageList` lists available locales; if M5 returns `ErrNoExternalLocales` with `["en"]`, treat that as a successful built-in-English-only result (`OK=true`). `LanguageSwitch` uses the exact `Code` value. A switch does not persist settings.
 - `TargetSelector` must select exactly one strategy: one or more explicit `MACs`, `UseTUISelection`, or `UseFocusedDevice`. Reject empty or conflicting selectors; resolution confirms the selected devices exist before any secret input.
