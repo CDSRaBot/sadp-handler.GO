@@ -144,7 +144,7 @@ present:
 | `Activated` | Pre-activation state gate |
 | `HttpPort` / `HttpPortNo` | Candidate ISAPI port where supplied |
 
-## 5. Pipeline B — SADP activation
+## 5. Pipeline B — device activation
 
 **Goal:** Set the initial administrative password on an inactive device.
 
@@ -164,7 +164,7 @@ present:
 | B2 | Validate password policy locally | Validated password metadata without retaining or logging the secret | Stop before network transmission if policy fails |
 | B3 | Obtain any required device challenge/capability data | Challenge or capability result, if the model requires it | Stop with a classified compatibility error when the required capability is unavailable |
 | B4 | Construct the activation operation | Schema-valid activation request bound to the target MAC/device | Never substitute a different target after request construction |
-| B5 | Send the SADP activation command or supported ISAPI activation request | Device response | Classify timeout, rejection, unsupported variant, and transport failure separately |
+| B5 | Send a supported ISAPI activation request; SADP activation is disabled | Device response | Classify timeout, rejection, unsupported variant, and transport failure separately |
 | B6 | Parse the response | Explicit success or typed failure | Do not infer success from a transport-level response alone |
 | B7 | Re-discover or query the device | Updated `Activated=true` state and stable identity | Treat missing or contradictory state as verification failure |
 | B8 | Publish the result | Activation result with no secret material | Preserve the failure reason and target identity |
@@ -174,11 +174,18 @@ present:
 The implementation may select only a documented variant supported by the
 device:
 
-1. SADP activation command using the target MAC and device challenge;
-2. plain XML activation through the device's ISAPI activation endpoint;
-3. challenge/RSA/encrypted activation required by a particular firmware;
-4. vendor web UI or official tool handoff when the device does not expose a
+1. plain XML activation through the device's ISAPI activation endpoint;
+2. challenge/RSA/encrypted activation required by a particular firmware;
+3. vendor web UI or official tool handoff when the device does not expose a
    supported programmatic variant.
+
+A trusted device-specific target/profile gate and a post-activation identity
+verifier are required before the captured encrypted flow can run. No production
+gate is currently provided. The untrusted status read does not prove identity,
+and initial challenge and activation requests must not be retried using the new
+credentials. An attempted activation PUT is recorded even if the outcome is
+unknown; it must not be interpreted as delivery or success. Plain ISAPI
+activation is described below but is not wired into the executable.
 
 A plain XML attempt MUST NOT be retried indefinitely when the device returns a
 security-capability or encrypted-activation indication. The result must state

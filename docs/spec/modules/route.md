@@ -36,6 +36,7 @@ type RouteResult struct {
     Target RouteTarget
     Fallback FallbackDecision
     Err error
+    ActivationAttempted bool
 }
 
 type Selector interface {
@@ -65,12 +66,18 @@ fallback.
 Discovery through ISAPI requires an explicit known address; ISAPI is not an
 implicit replacement for SADP inventory. A successful authenticated
 `deviceInfo` read returns the device MAC, model, serial number and firmware
-version where present; a supplied target MAC must match. This transport
-operation is not yet exposed by the executable. ISAPI route probing opens a
+version where present; a supplied target MAC must match. Read-only discovery
+is exposed in the one-shot CLI. ISAPI route probing opens a
 bounded TCP connection and does not infer reachability from the capabilities
 endpoint. Explicit interface binding is not implemented and is rejected.
 Activation and network configuration
-must pass a post-operation status verification gate.
+must pass a post-operation status verification gate. Activation additionally
+requires an injected trusted device-specific target/profile gate, a valid
+EUI-48 MAC and a preflight inactive state. No production gate is currently
+available, so executable activation remains disabled. The status preflight
+alone is unauthenticated and does not establish identity. If the activation
+PUT is attempted, `ActivationAttempted` remains true even on later errors;
+it does not assert that the device received or applied the request.
 
 ## 4. Errors, limits, and security
 
@@ -82,6 +89,7 @@ request counts, retries, and concurrency are bounded.
 
 Results and diagnostics must not contain passwords, challenges, nonces,
 hashes, keys, authorization headers, XML, or complete packet payloads. ISAPI
-activation implements the universal Hikvision SDK RSA-1024/65537 challenge and
-AES-128-ECB procedure defined by P9.1; other undocumented cryptographic
-variants are not permitted.
+activation includes the observed RSA-1024/65537 challenge and AES-128-ECB
+procedure; this is not a universal compatibility claim. Initial activation
+requests do not replay with the new credentials after an authentication
+challenge. Other unverified cryptographic variants are not permitted.

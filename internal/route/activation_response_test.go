@@ -32,6 +32,10 @@ func TestActivationChallengeRequiresUnambiguousDirectKey(t *testing.T) {
 func TestActivationDoesNotMutateAfterAmbiguousChallenge(t *testing.T) {
 	mutations := 0
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/SDK/activateStatus" {
+			_, _ = writer.Write([]byte(`<Status><Activated>false</Activated></Status>`))
+			return
+		}
 		if request.URL.Path == "/ISAPI/Security/challenge" {
 			_, _ = writer.Write([]byte(`<Challenge><key>one</key><key>two</key></Challenge>`))
 			return
@@ -41,7 +45,8 @@ func TestActivationDoesNotMutateAfterAmbiguousChallenge(t *testing.T) {
 	defer server.Close()
 	transport := &ISAPIHTTPTransport{
 		BaseURL: server.URL, Password: "SyntheticPass1!",
-		Verifier: activationVerifierFunc(func(context.Context, Target, string) error { return nil }),
+		Verifier:       activationVerifierFunc(func(context.Context, Target, string) error { return nil }),
+		ActivationGate: activationGateFunc(func(context.Context, Target) error { return nil }),
 	}
 	_, err := transport.Execute(context.Background(), OperationActivation, serverTarget(t, server))
 	var routeErr *Error
@@ -58,7 +63,8 @@ func TestActivationRejectsPasswordThatWouldBeTruncatedBeforeRequests(t *testing.
 	defer server.Close()
 	transport := &ISAPIHTTPTransport{
 		BaseURL: server.URL, Password: "SyntheticPassword1!",
-		Verifier: activationVerifierFunc(func(context.Context, Target, string) error { return nil }),
+		Verifier:       activationVerifierFunc(func(context.Context, Target, string) error { return nil }),
+		ActivationGate: activationGateFunc(func(context.Context, Target) error { return nil }),
 	}
 	_, err := transport.Execute(context.Background(), OperationActivation, serverTarget(t, server))
 	var routeErr *Error

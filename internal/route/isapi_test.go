@@ -8,12 +8,14 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -39,10 +41,17 @@ func (f activationVerifierFunc) VerifyActivation(ctx context.Context, target Tar
 	return f(ctx, target, password)
 }
 
+type activationGateFunc func(context.Context, Target) error
+
+func (f activationGateFunc) VerifyActivationTarget(ctx context.Context, target Target) error {
+	return f(ctx, target)
+}
+
 func TestISAPIHTTPTransportRunsActivationAndVerification(t *testing.T) {
 	const challenge = "00112233445566778899aabbccddeeff"
 	var activatedPayload activateInfo
 	var verified bool
+	var activated atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/ISAPI/Security/challenge":
@@ -72,9 +81,10 @@ func TestISAPIHTTPTransportRunsActivationAndVerification(t *testing.T) {
 			if err := xml.NewDecoder(request.Body).Decode(&activatedPayload); err != nil {
 				t.Fatal(err)
 			}
+			activated.Store(true)
 			_, _ = writer.Write([]byte("<ResponseStatus><statusCode>1</statusCode></ResponseStatus>"))
 		case "/SDK/activateStatus":
-			_, _ = writer.Write([]byte("<Status><Activated>true</Activated></Status>"))
+			_, _ = writer.Write([]byte(fmt.Sprintf("<Status><Activated>%t</Activated></Status>", activated.Load())))
 		default:
 			http.NotFound(writer, request)
 		}
@@ -83,6 +93,7 @@ func TestISAPIHTTPTransportRunsActivationAndVerification(t *testing.T) {
 
 	transport := &ISAPIHTTPTransport{
 		BaseURL: server.URL, Password: "SyntheticPass1!",
+		ActivationGate: activationGateFunc(func(context.Context, Target) error { return nil }),
 		Verifier: activationVerifierFunc(func(_ context.Context, target Target, password string) error {
 			verified = target.Address == serverTarget(t, server).Address && password == "SyntheticPass1!"
 			return nil
@@ -96,7 +107,7 @@ func TestISAPIHTTPTransportRunsActivationAndVerification(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
-	if result.Protocol != "isapi" || result.Operation != OperationActivation || !verified {
+	if result.Protocol != "isapi" || result.Operation != OperationActivation || !result.ActivationAttempted || !verified {
 		t.Fatalf("unexpected result: %#v", result)
 	}
 	if activatedPayload.Password == "" || strings.Contains(activatedPayload.Password, transport.Password) {

@@ -79,12 +79,13 @@ type Target struct {
 }
 
 type Result struct {
-	Operation Operation
-	Protocol  string
-	Target    Target
-	Device    *DeviceInfo
-	Fallback  FallbackDecision
-	Err       error
+	Operation           Operation
+	Protocol            string
+	Target              Target
+	Device              *DeviceInfo
+	Fallback            FallbackDecision
+	Err                 error
+	ActivationAttempted bool
 }
 
 type DeviceInfo struct {
@@ -245,7 +246,10 @@ func (s *Selector) Execute(ctx context.Context, operation Operation, target Targ
 func (s *Selector) executeISAPI(ctx context.Context, operation Operation, target Target, fallback FallbackDecision) (Result, error) {
 	result, err := s.deps.ISAPI.Execute(ctx, operation, target)
 	if err != nil {
-		return Result{Operation: operation, Target: target, Protocol: "isapi", Fallback: fallback, Err: err}, err
+		return Result{
+			Operation: operation, Target: target, Protocol: "isapi", Fallback: fallback,
+			Err: err, ActivationAttempted: result.ActivationAttempted,
+		}, err
 	}
 	if operation == OperationDiscovery && len(target.MAC) == 0 && len(result.Target.MAC) == 6 {
 		target.MAC = append(net.HardwareAddr(nil), result.Target.MAC...)

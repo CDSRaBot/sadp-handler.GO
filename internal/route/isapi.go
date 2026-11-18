@@ -27,6 +27,13 @@ type ISAPIHTTPTransport struct {
 	Password         string
 	AllowBasic       bool
 	Verifier         ISAPIActivationVerifier
+	ActivationGate   ISAPIActivationGate
+}
+
+// ISAPIActivationGate must establish the intended target's identity and a
+// compatible activation profile using trusted, device-specific evidence.
+type ISAPIActivationGate interface {
+	VerifyActivationTarget(context.Context, Target) error
 }
 
 type ISAPIActivationVerifier interface {
@@ -378,52 +385,107 @@ func (t *ISAPIHTTPTransport) Execute(ctx context.Context, operation Operation, t
 }
 
 func (t *ISAPIHTTPTransport) activate(ctx context.Context, base *url.URL, target Target) (Result, error) {
+	target.MAC = append(net.HardwareAddr(nil), target.MAC...)
+	result := Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}
 	if t.Verifier == nil {
-		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorUnsupported, Err: errors.New("ISAPI activation identity verifier is required")}
+		return result, &Error{Kind: ErrorUnsupported, Err: errors.New("ISAPI activation identity verifier is required")}
+	}
+	if t.ActivationGate == nil {
+		return result, &Error{Kind: ErrorUnsupported, Err: errors.New("verified ISAPI activation profile and target identity are required")}
+	}
+	if ctx == nil || len(target.MAC) != 6 || target.Interface != "" {
+		return result, &Error{Kind: ErrorInvalidInput, Err: errors.New("ISAPI activation target or context is invalid")}
+	}
+	if err := ctx.Err(); err != nil {
+		return result, contextError(err)
 	}
 	material, err := NewActivationSecurityMaterial(t.Password)
 	if err != nil {
-		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, err
+		return result, err
+	}
+	if err := ctx.Err(); err != nil {
+		return result, contextError(err)
+	}
+	reachable, err := (ISAPIRouteProvider{Transport: t}).CanReach(ctx, target.Address, "")
+	if err != nil {
+		return result, err
+	}
+	if !reachable {
+		return result, &Error{Kind: ErrorNoRoute, Err: errors.New("ISAPI activation target is not reachable")}
+	}
+	gateTarget := target
+	gateTarget.MAC = append(net.HardwareAddr(nil), target.MAC...)
+	if err := t.ActivationGate.VerifyActivationTarget(ctx, gateTarget); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return result, contextError(err)
+		}
+		var routeErr *Error
+		if errors.As(err, &routeErr) {
+			return result, err
+		}
+		return result, &Error{Kind: ErrorVerification, Err: err}
+	}
+	if !bytes.Equal(gateTarget.MAC, target.MAC) {
+		return result, &Error{Kind: ErrorVerification, Err: errors.New("ISAPI activation gate changed the target identity")}
+	}
+	unauthenticated := *t
+	unauthenticated.Username = ""
+	unauthenticated.Password = ""
+	client := t.boundedHTTPClient()
+	client.Jar = nil
+	unauthenticated.Client = client
+	state, err := unauthenticated.readActivationState(ctx, base)
+	if err != nil {
+		return result, err
+	}
+	if state != ISAPIActivationInactive {
+		return result, &Error{Kind: ErrorRejected, Err: errors.New("ISAPI target is already active")}
 	}
 	requestBody, err := xml.Marshal(securityChallengeRequest{PublicKey: material.PublicKey})
 	if err != nil {
-		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorMalformed, Err: err}
+		return result, &Error{Kind: ErrorMalformed, Err: err}
 	}
 	challengeURL := base.ResolveReference(&url.URL{Path: "/ISAPI/Security/challenge"})
-	challengePayload, err := t.request(ctx, http.MethodPost, challengeURL, requestBody)
+	challengePayload, err := unauthenticated.request(ctx, http.MethodPost, challengeURL, requestBody)
 	if err != nil {
-		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, err
+		return result, err
 	}
 	challenge, err := parseUniqueDirectText(challengePayload, "Challenge", "key")
 	if err != nil || strings.TrimSpace(challenge) == "" {
-		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI challenge response is malformed")}
+		return result, &Error{Kind: ErrorMalformed, Err: errors.New("ISAPI challenge response is malformed")}
 	}
 	password, err := BuildISAPIActivationPassword(material, challenge)
 	if err != nil {
-		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, err
+		return result, err
 	}
 	activationPayload, err := xml.Marshal(activateInfo{Password: password})
 	if err != nil {
-		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, &Error{Kind: ErrorMalformed, Err: err}
+		return result, &Error{Kind: ErrorMalformed, Err: err}
 	}
 	activateURL := base.ResolveReference(&url.URL{Path: "/ISAPI/System/activate"})
-	response, err := t.request(ctx, http.MethodPut, activateURL, activationPayload)
+	result.ActivationAttempted = true
+	response, err := unauthenticated.request(ctx, http.MethodPut, activateURL, activationPayload)
 	if err != nil {
-		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, err
+		return result, err
 	}
 	if err := validateISAPIResponseStatus(response); err != nil {
-		return Result{Operation: OperationActivation, Target: target, Protocol: "isapi"}, err
+		return result, err
 	}
-	status, err := t.status(ctx, base, target)
-	if err != nil {
-		status.Operation = OperationActivation
-		return status, err
+	if _, err := t.status(ctx, base, target); err != nil {
+		return result, err
 	}
-	status.Operation = OperationActivation
-	if err := t.Verifier.VerifyActivation(ctx, target, t.Password); err != nil {
-		return status, &Error{Kind: ErrorVerification, Err: err}
+	verificationTarget := target
+	verificationTarget.MAC = append(net.HardwareAddr(nil), target.MAC...)
+	if err := t.Verifier.VerifyActivation(ctx, verificationTarget, t.Password); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return result, contextError(err)
+		}
+		return result, &Error{Kind: ErrorVerification, Err: err}
 	}
-	return status, nil
+	if !bytes.Equal(verificationTarget.MAC, target.MAC) {
+		return result, &Error{Kind: ErrorVerification, Err: errors.New("ISAPI activation verifier changed the target identity")}
+	}
+	return result, nil
 }
 
 func validateISAPIResponseStatus(payload []byte) error {

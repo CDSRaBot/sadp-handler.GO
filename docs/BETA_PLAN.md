@@ -80,6 +80,9 @@ target device; the observed salted/AES profile is not yet established.
   fields; passwords are validated before any request to prevent truncation.
   A read-only activation-state preflight distinguishes active and inactive
   states; it does not authenticate a device or authorize mutation.
+  The encrypted activation component additionally requires a trusted
+  device-specific identity/profile gate and records an attempted PUT even if
+  its result is unknown. No production gate has been established.
   Generic user-field encryption, the captured session-login proof and
   security-question field-encryption/KDF format are available for confirmed
   schemas, but are not wired to user operations. These components are tested
