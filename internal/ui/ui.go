@@ -33,6 +33,8 @@ type ISAPIDiscoverCommand struct {
 	PasswordInput PasswordSource
 }
 
+type ISAPIActivateCommand ISAPIDiscoverCommand
+
 type ISAPIStatusCommand struct {
 	Address netip.Addr
 	Port    uint16
@@ -75,6 +77,7 @@ type ExportLocaleTemplateCommand struct {
 
 func (DiscoverCommand) isCommand()             {}
 func (ISAPIDiscoverCommand) isCommand()        {}
+func (ISAPIActivateCommand) isCommand()        {}
 func (ISAPIStatusCommand) isCommand()          {}
 func (ActivateCommand) isCommand()             {}
 func (NetworkCommand) isCommand()              {}
@@ -105,23 +108,31 @@ const (
 )
 
 type CommandResult struct {
-	Command     string                 `json:"command,omitempty"`
-	OK          bool                   `json:"ok"`
-	Exit        bool                   `json:"exit,omitempty"`
-	Message     string                 `json:"message,omitempty"`
-	Discovery   []DiscoveredDevice     `json:"discovery,omitempty"`
-	ISAPIDevice *ISAPIDiscoveredDevice `json:"isapi_device,omitempty"`
-	ISAPIStatus *ISAPIStatusResult     `json:"isapi_status,omitempty"`
-	Devices     []DeviceOutcome        `json:"devices,omitempty"`
-	Locales     []string               `json:"locales,omitempty"`
-	Version     string                 `json:"version,omitempty"`
-	Error       *CommandFailure        `json:"error,omitempty"`
+	Command         string                 `json:"command,omitempty"`
+	OK              bool                   `json:"ok"`
+	Exit            bool                   `json:"exit,omitempty"`
+	Message         string                 `json:"message,omitempty"`
+	Discovery       []DiscoveredDevice     `json:"discovery,omitempty"`
+	ISAPIDevice     *ISAPIDiscoveredDevice `json:"isapi_device,omitempty"`
+	ISAPIStatus     *ISAPIStatusResult     `json:"isapi_status,omitempty"`
+	ISAPIActivation *ISAPIActivationResult `json:"isapi_activation,omitempty"`
+	Devices         []DeviceOutcome        `json:"devices,omitempty"`
+	Locales         []string               `json:"locales,omitempty"`
+	Version         string                 `json:"version,omitempty"`
+	Error           *CommandFailure        `json:"error,omitempty"`
 }
 
 type ISAPIStatusResult struct {
 	Address          string `json:"address"`
 	State            string `json:"state"`
 	IdentityVerified bool   `json:"identity_verified"`
+}
+
+type ISAPIActivationResult struct {
+	Address   string `json:"address"`
+	MAC       string `json:"mac"`
+	Attempted bool   `json:"attempted"`
+	Verified  bool   `json:"verified"`
 }
 
 type ISAPIDiscoveredDevice struct {
@@ -173,6 +184,10 @@ type ISAPIStatusService interface {
 	ReadISAPIStatus(context.Context, ISAPIStatusCommand) (ISAPIStatusResult, error)
 }
 
+type ISAPIActivationService interface {
+	ActivateISAPI(context.Context, ISAPIActivateCommand) (ISAPIActivationResult, error)
+}
+
 type DiscoverySession interface {
 	Events() <-chan DiscoveredDevice
 	Errors() <-chan error
@@ -213,6 +228,7 @@ type Dependencies struct {
 	Discovery        DiscoveryService
 	ISAPIDiscovery   ISAPIDiscoveryService
 	ISAPIStatus      ISAPIStatusService
+	ISAPIActivation  ISAPIActivationService
 	DiscoverySession DiscoverySessionService
 	InterfaceLister  InterfaceLister
 	InterfaceIndex   *int
@@ -297,6 +313,8 @@ func DispatchCommand(ctx context.Context, command Command, dependencies Dependen
 		return dispatchISAPIDiscover(ctx, value, dependencies)
 	case ISAPIStatusCommand:
 		return dispatchISAPIStatus(ctx, value, dependencies)
+	case ISAPIActivateCommand:
+		return dispatchISAPIActivate(ctx, value, dependencies)
 	case ActivateCommand:
 		return dispatchActivate(ctx, value, dependencies)
 	case NetworkCommand:
@@ -306,7 +324,7 @@ func DispatchCommand(ctx context.Context, command Command, dependencies Dependen
 	case HelpCommand:
 		message := dependencies.Help
 		if message == "" {
-			message = "discover, isapi-discover (one-shot only), isapi-status, activate, network, language, help, version, quit"
+			message = "discover, isapi-discover (one-shot only), isapi-status, isapi-activate (one-shot only, disabled), activate, network, language, help, version, quit"
 		}
 		return CommandResult{Command: "help", OK: true, Message: message}, nil
 	case VersionCommand:
@@ -498,6 +516,8 @@ func commandName(command Command) string {
 		return "discover"
 	case ISAPIDiscoverCommand:
 		return "isapi-discover"
+	case ISAPIActivateCommand:
+		return "isapi-activate"
 	case ISAPIStatusCommand:
 		return "isapi-status"
 	case ActivateCommand:

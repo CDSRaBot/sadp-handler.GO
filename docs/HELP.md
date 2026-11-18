@@ -87,6 +87,24 @@ identity as unverified. JSON uses `isapi_status` with `address`, `state`, and
 signal: it must not be used as evidence of device identity or authorization
 to perform a mutation. Physical-device compatibility is not yet established.
 
+### `isapi-activate`
+
+```text
+sadp-handler --ui=no --once isapi-activate --address IP --device MAC --username USER --password-stdin [--port PORT] [--https] [--basic]
+```
+
+This one-shot ISAPI activation path is **disabled in the executable**: no
+trusted device-specific identity and activation profile has been established.
+It fails before reading the password or contacting the device. It is not a
+claim of physical-device compatibility.
+
+The path is exercised with synthetic profiles only. If a verified profile is
+provided in a future version, the JSON `isapi_activation` result reports
+`attempted` and `verified`. An attempted PUT with `verified: false` means the
+device state may be unknown; inspect the device before retrying. Basic
+authentication requires explicit `--basic` and `--https`, and password input
+is redirected, as for `isapi-discover`.
+
 ### `activate`
 
 ```text

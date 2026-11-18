@@ -69,14 +69,17 @@ target device; the observed salted/AES profile is not yet established.
 - SADP activation is blocked in the UI workflow and route selector. The
   executable still reports activation unavailable; it does not yet invoke the
   ISAPI replacement. TUI and REPL show the disabled message before requiring a
-  target, confirmation or password.
+  target, confirmation or password. A separate one-shot ISAPI activation path
+  is wired but fails closed because the executable has no trusted profile.
 - SADP discovery is available through the TUI session and bounded CLI
   snapshots. CLI snapshots combine repeated advertisements by MAC and sender
   address and report discovery errors alongside any partial results.
 - ISAPI includes bounded HTTP transport, Digest authentication and opt-in
   Basic over HTTPS, target-specific
   addressing, authenticated known-address discovery and an activation
-  identity-verification component. The activation challenge uses the
+  identity-verification component. The one-shot activation path is covered
+  end-to-end using synthetic gate and device responses, including uncertain
+  delivery and authenticated identity failure. The activation challenge uses the
   captured `PublicKey` envelope and rejects ambiguous challenge and status
   fields; passwords are validated before any request to prevent truncation.
   A read-only activation-state preflight distinguishes active and inactive

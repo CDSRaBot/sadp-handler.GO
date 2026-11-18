@@ -154,6 +154,12 @@ func DispatchCommand(
   matching MAC identity. Status is available in one-shot, TUI and REPL; it is
   a read-only, unauthenticated signal with `identity_verified=false`, not
   mutation authority.
+- The one-shot `isapi-activate` path requires a trusted identity/profile gate,
+  checks it before reading the password and rechecks it at the transport
+  boundary. The executable has no such profile and refuses activation before
+  password or network access. Preserve `attempted` on any failure after PUT
+  is attempted; `verified` is true only after status and authenticated identity
+  verification. A failed attempted mutation may have an unknown outcome.
 - `PasswordFromPrompt` is used by the TUI's masked prompt; `PasswordFromStdin` is used by CLI `--password-stdin`. Neither source is read until all command, target, confirmation, and implementation-gate checks succeed.
 - `LanguageList` lists available locales; if M5 returns `ErrNoExternalLocales` with `["en"]`, treat that as a successful built-in-English-only result (`OK=true`). `LanguageSwitch` uses the exact `Code` value. A switch does not persist settings.
 - `TargetSelector` must select exactly one strategy: one or more explicit `MACs`, `UseTUISelection`, or `UseFocusedDevice`. Reject empty or conflicting selectors; resolution confirms the selected devices exist before any secret input.

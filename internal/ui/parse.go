@@ -96,6 +96,12 @@ func ParseCLICommand(args []string) (Command, error) {
 		return parseDiscover(args)
 	case "isapi-discover":
 		return parseISAPIDiscover(args)
+	case "isapi-activate":
+		command, err := parseISAPIDiscover(args)
+		if err != nil {
+			return nil, err
+		}
+		return ISAPIActivateCommand(command.(ISAPIDiscoverCommand)), nil
 	case "isapi-status":
 		return parseISAPIStatus(args)
 	case "activate":

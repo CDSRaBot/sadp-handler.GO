@@ -264,6 +264,12 @@ func writeTextResult(writer io.Writer, result CommandResult) error {
 			return err
 		}
 	}
+	if activation := result.ISAPIActivation; activation != nil {
+		if _, err := fmt.Fprintf(writer, "%s %s attempted=%t verified=%t\n",
+			activation.Address, activation.MAC, activation.Attempted, activation.Verified); err != nil {
+			return err
+		}
+	}
 	for _, device := range result.Devices {
 		if _, err := fmt.Fprintf(writer, "%s %s", device.MAC, device.Status); err != nil {
 			return err
