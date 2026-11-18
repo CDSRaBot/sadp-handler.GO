@@ -69,6 +69,7 @@ func run() int {
 		UI: ui.Dependencies{
 			Discovery:        ui.SessionDiscoveryService{Sessions: session},
 			ISAPIDiscovery:   ui.ISAPIKnownAddressService{Passwords: ui.NewOneShotPasswordProvider(os.Stdin)},
+			ISAPIStatus:      ui.ISAPIKnownAddressStatusService{},
 			DiscoverySession: session,
 			InterfaceLister:  session,
 			Locales:          locales,

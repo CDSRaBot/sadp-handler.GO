@@ -68,6 +68,23 @@ The JSON result contains `isapi_device` with the verified MAC, address, model,
 serial number and firmware version when provided. Physical-device compatibility
 has not yet been established.
 
+### `isapi-status`
+
+```text
+sadp-handler --ui=no --once isapi-status --address IP [--port PORT] [--https]
+```
+
+Read the activation state of an explicitly specified non-link-local unicast IP
+using `GET /SDK/activateStatus`. This one-shot read-only command does not read
+a password or activate a device. Ports default to 80 for HTTP and 443 for
+HTTPS; HTTPS uses the system trust store.
+
+The result reports `active` or `inactive` and explicitly marks the device
+identity as unverified. JSON uses `isapi_status` with `address`, `state`, and
+`identity_verified: false`. This unauthenticated status is only a preflight
+signal: it must not be used as evidence of device identity or authorization
+to perform a mutation. Physical-device compatibility is not yet established.
+
 ### `activate`
 
 ```text

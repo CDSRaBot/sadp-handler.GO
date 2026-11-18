@@ -17,6 +17,22 @@ type DiscoverCommand struct {
     Policy         DiscoveryPolicy
 }
 
+type ISAPIDiscoverCommand struct {
+    Address       netip.Addr
+    MAC           net.HardwareAddr
+    Port          uint16
+    Username      string
+    HTTPS         bool
+    AllowBasic    bool
+    PasswordInput PasswordSource
+}
+
+type ISAPIStatusCommand struct {
+    Address netip.Addr
+    Port    uint16
+    HTTPS   bool
+}
+
 type DiscoveryPolicy struct {
     ProbeInterval       time.Duration
     CycleTimeout        time.Duration
@@ -56,10 +72,26 @@ type CommandResult struct {
     Exit      bool               `json:"exit,omitempty"`
     Message   string             `json:"message,omitempty"`
     Discovery []DiscoveredDevice `json:"discovery,omitempty"`
+    ISAPIDevice *ISAPIDiscoveredDevice `json:"isapi_device,omitempty"`
+    ISAPIStatus *ISAPIStatusResult      `json:"isapi_status,omitempty"`
     Devices   []DeviceOutcome    `json:"devices,omitempty"`
     Locales   []string           `json:"locales,omitempty"`
     Version   string             `json:"version,omitempty"`
     Error     *CommandFailure    `json:"error,omitempty"`
+}
+
+type ISAPIDiscoveredDevice struct {
+    MAC             string `json:"mac"`
+    Address         string `json:"address"`
+    Model           string `json:"model,omitempty"`
+    SerialNumber    string `json:"serial_number,omitempty"`
+    FirmwareVersion string `json:"firmware_version,omitempty"`
+}
+
+type ISAPIStatusResult struct {
+    Address          string `json:"address"`
+    State            string `json:"state"`
+    IdentityVerified bool   `json:"identity_verified"`
 }
 
 type TargetSelector struct {
@@ -118,6 +150,9 @@ func DispatchCommand(
 
 `NetworkConfig` is the typed M3 configuration contract, not a separate M4 model. `Dependencies` supplies the application services used by dispatch, including a TUI-owned discovery-session manager. Command variants are closed to the M4 package; both parsers construct these variants. `DispatchCommand` must be the only common command-to-workflow routing boundary.
 
+- ISAPI discovery and status execute only in one-shot CLI mode. Discovery
+  requires authenticated matching MAC identity; status is a read-only,
+  unauthenticated signal with `identity_verified=false`, not mutation authority.
 - `PasswordFromPrompt` is used by the TUI's masked prompt; `PasswordFromStdin` is used by CLI `--password-stdin`. Neither source is read until all command, target, confirmation, and implementation-gate checks succeed.
 - `LanguageList` lists available locales; if M5 returns `ErrNoExternalLocales` with `["en"]`, treat that as a successful built-in-English-only result (`OK=true`). `LanguageSwitch` uses the exact `Code` value. A switch does not persist settings.
 - `TargetSelector` must select exactly one strategy: one or more explicit `MACs`, `UseTUISelection`, or `UseFocusedDevice`. Reject empty or conflicting selectors; resolution confirms the selected devices exist before any secret input.

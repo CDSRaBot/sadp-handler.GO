@@ -37,6 +37,8 @@ app [--lang CODE] [--format text|json] --ui=no --once COMMAND [COMMAND OPTIONS]
 
 ```text
 discover --interface INDEX --timeout DURATION [--repeat COUNT]
+isapi-discover --address IP --device MAC --username USER --password-stdin [--port PORT] [--https] [--basic]
+isapi-status --address IP [--port PORT] [--https]
 activate --device MAC [--device MAC ...] --password-stdin [--email EMAIL] [--yes]
 network --device MAC [--device MAC ...] --password-stdin (--dhcp | --address IPv4/PREFIX --gateway IPv4) [--yes]
 language list
@@ -48,6 +50,12 @@ quit
 ```
 
 - `discover` requires one eligible interface index and an explicit positive finite `--timeout` for each receive cycle. `--repeat` is an integer in `1..100` and defaults to `1`. Each cycle sends one probe immediately, receives continuously for its timeout, and starts the next cycle immediately after the preceding receive window. Receiving a device does not end a cycle. The total run is bounded by approximately `timeout × repeat` plus setup/cleanup overhead.
+- `isapi-discover` and `isapi-status` run only in one-shot mode and require an
+  explicit non-link-local unicast IP literal. Both use port 80 by default, or
+  443 with `--https`; a nonzero `--port` overrides it. Discovery additionally
+  requires an EUI-48 MAC, username and redirected `--password-stdin` input.
+  Basic authentication requires both `--basic` and `--https`. Status does not
+  read credentials; its unauthenticated result cannot verify device identity.
 - `activate` and `network` accept one or more repeatable `--device MAC` options. Each MAC must be a valid six-byte EUI-48 address; reject duplicates after normalization. Require `--yes` when there are two or more target MACs. With one target, no confirmation prompt is issued in one-shot mode.
 - `--password-stdin` marks standard input as the password source. In the REPL, read it with terminal echo disabled; in one-shot mode, read one password line from stdin, including when stdin is redirected. Do not read the password while these workflows are behind the implementation gate; after they become supported, read the secret only after command, target, and confirmation validation. Never accept passwords in an ordinary option value, command argument, environment variable, rendered history, or diagnostic.
 - Network configuration requires exactly one of `--dhcp` and `--address`. Static `--address` requires `--gateway`; `--gateway` is forbidden with `--dhcp`. CIDR defines the address and prefix.

@@ -87,6 +87,8 @@ target device; the observed salted/AES profile is not yet established.
 - Read-only authenticated ISAPI discovery by explicit IP and MAC is wired to
   the one-shot CLI. It requires redirected password input, checks reachability
   and matching identity, and has not been tested on physical devices.
+- Read-only activation-state preflight is also available in the one-shot CLI;
+  its result explicitly marks device identity as unverified.
 - ISAPI network workflow orchestration is covered by synthetic tests but has
   no verified device-specific profile, automatic reboot or executable
   integration. Static-address and SADP-assisted DHCP reappearance locators

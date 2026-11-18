@@ -33,6 +33,12 @@ type ISAPIDiscoverCommand struct {
 	PasswordInput PasswordSource
 }
 
+type ISAPIStatusCommand struct {
+	Address netip.Addr
+	Port    uint16
+	HTTPS   bool
+}
+
 type DiscoveryPolicy struct {
 	ProbeInterval       time.Duration
 	CycleTimeout        time.Duration
@@ -69,6 +75,7 @@ type ExportLocaleTemplateCommand struct {
 
 func (DiscoverCommand) isCommand()             {}
 func (ISAPIDiscoverCommand) isCommand()        {}
+func (ISAPIStatusCommand) isCommand()          {}
 func (ActivateCommand) isCommand()             {}
 func (NetworkCommand) isCommand()              {}
 func (LanguageCommand) isCommand()             {}
@@ -104,10 +111,17 @@ type CommandResult struct {
 	Message     string                 `json:"message,omitempty"`
 	Discovery   []DiscoveredDevice     `json:"discovery,omitempty"`
 	ISAPIDevice *ISAPIDiscoveredDevice `json:"isapi_device,omitempty"`
+	ISAPIStatus *ISAPIStatusResult     `json:"isapi_status,omitempty"`
 	Devices     []DeviceOutcome        `json:"devices,omitempty"`
 	Locales     []string               `json:"locales,omitempty"`
 	Version     string                 `json:"version,omitempty"`
 	Error       *CommandFailure        `json:"error,omitempty"`
+}
+
+type ISAPIStatusResult struct {
+	Address          string `json:"address"`
+	State            string `json:"state"`
+	IdentityVerified bool   `json:"identity_verified"`
 }
 
 type ISAPIDiscoveredDevice struct {
@@ -155,6 +169,10 @@ type ISAPIDiscoveryService interface {
 	DiscoverISAPI(context.Context, ISAPIDiscoverCommand) (ISAPIDiscoveredDevice, error)
 }
 
+type ISAPIStatusService interface {
+	ReadISAPIStatus(context.Context, ISAPIStatusCommand) (ISAPIStatusResult, error)
+}
+
 type DiscoverySession interface {
 	Events() <-chan DiscoveredDevice
 	Errors() <-chan error
@@ -194,6 +212,7 @@ type Dependencies struct {
 	Config           RuntimeUIConfig
 	Discovery        DiscoveryService
 	ISAPIDiscovery   ISAPIDiscoveryService
+	ISAPIStatus      ISAPIStatusService
 	DiscoverySession DiscoverySessionService
 	InterfaceLister  InterfaceLister
 	InterfaceIndex   *int
@@ -276,6 +295,8 @@ func DispatchCommand(ctx context.Context, command Command, dependencies Dependen
 		return dispatchDiscover(ctx, value, dependencies)
 	case ISAPIDiscoverCommand:
 		return dispatchISAPIDiscover(ctx, value, dependencies)
+	case ISAPIStatusCommand:
+		return dispatchISAPIStatus(ctx, value, dependencies)
 	case ActivateCommand:
 		return dispatchActivate(ctx, value, dependencies)
 	case NetworkCommand:
@@ -285,7 +306,7 @@ func DispatchCommand(ctx context.Context, command Command, dependencies Dependen
 	case HelpCommand:
 		message := dependencies.Help
 		if message == "" {
-			message = "discover, isapi-discover (one-shot only), activate, network, language, help, version, quit"
+			message = "discover, isapi-discover (one-shot only), isapi-status (one-shot only), activate, network, language, help, version, quit"
 		}
 		return CommandResult{Command: "help", OK: true, Message: message}, nil
 	case VersionCommand:
@@ -469,6 +490,8 @@ func commandName(command Command) string {
 		return "discover"
 	case ISAPIDiscoverCommand:
 		return "isapi-discover"
+	case ISAPIStatusCommand:
+		return "isapi-status"
 	case ActivateCommand:
 		return "activate"
 	case NetworkCommand:

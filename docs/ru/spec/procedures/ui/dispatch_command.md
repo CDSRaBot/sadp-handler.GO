@@ -17,6 +17,22 @@ type DiscoverCommand struct {
     Policy         DiscoveryPolicy
 }
 
+type ISAPIDiscoverCommand struct {
+    Address       netip.Addr
+    MAC           net.HardwareAddr
+    Port          uint16
+    Username      string
+    HTTPS         bool
+    AllowBasic    bool
+    PasswordInput PasswordSource
+}
+
+type ISAPIStatusCommand struct {
+    Address netip.Addr
+    Port    uint16
+    HTTPS   bool
+}
+
 type DiscoveryPolicy struct {
     ProbeInterval       time.Duration
     CycleTimeout        time.Duration
@@ -56,10 +72,26 @@ type CommandResult struct {
     Exit      bool               `json:"exit,omitempty"`
     Message   string             `json:"message,omitempty"`
     Discovery []DiscoveredDevice `json:"discovery,omitempty"`
+    ISAPIDevice *ISAPIDiscoveredDevice `json:"isapi_device,omitempty"`
+    ISAPIStatus *ISAPIStatusResult      `json:"isapi_status,omitempty"`
     Devices   []DeviceOutcome    `json:"devices,omitempty"`
     Locales   []string           `json:"locales,omitempty"`
     Version   string             `json:"version,omitempty"`
     Error     *CommandFailure    `json:"error,omitempty"`
+}
+
+type ISAPIDiscoveredDevice struct {
+    MAC             string `json:"mac"`
+    Address         string `json:"address"`
+    Model           string `json:"model,omitempty"`
+    SerialNumber    string `json:"serial_number,omitempty"`
+    FirmwareVersion string `json:"firmware_version,omitempty"`
+}
+
+type ISAPIStatusResult struct {
+    Address          string `json:"address"`
+    State            string `json:"state"`
+    IdentityVerified bool   `json:"identity_verified"`
 }
 
 type TargetSelector struct {
@@ -118,6 +150,9 @@ func DispatchCommand(
 
 `NetworkConfig` — типизированный контракт M3, а не отдельная модель M4. `Dependencies` предоставляет сервисы приложения для диспетчеризации, включая менеджер фонового сеанса обнаружения TUI. Варианты команд закрыты внутри пакета M4; их создают оба парсера. `DispatchCommand` — единственная общая граница маршрутизации команд в рабочие процессы.
 
+- ISAPI discovery и status исполняются только в one-shot CLI. Discovery требует
+  аутентификации и совпадения MAC; status — сигнал только для чтения с
+  `identity_verified=false`, не являющийся разрешением на изменение.
 - `PasswordFromPrompt` используется для маскированного запроса TUI; `PasswordFromStdin` — для CLI `--password-stdin`. Ни один источник не читается до проверки команды, целей, подтверждения и ограничения реализации.
 - `LanguageList` перечисляет доступные локали; если M5 возвращает `ErrNoExternalLocales` со списком `["en"]`, считать это успешным результатом со встроенным английским (`OK=true`). `LanguageSwitch` использует точное значение `Code`. Переключение не сохраняется в настройках.
 - `TargetSelector` должен задавать ровно одну стратегию: один или несколько явных `MACs`, `UseTUISelection` либо `UseFocusedDevice`. Отклонять пустые и конфликтующие селекторы; перед вводом любого секрета проверить наличие выбранных устройств.

@@ -253,10 +253,15 @@ func writeTextResult(writer io.Writer, result CommandResult) error {
 		if _, err := fmt.Fprintf(writer, "%s %s %s %s\n", device.MAC, device.IPv4, device.Model, device.Sender); err != nil {
 			return err
 		}
-		if device := result.ISAPIDevice; device != nil {
-			if _, err := fmt.Fprintf(writer, "%s %s %s %s %s\n", device.MAC, device.Address, device.Model, device.SerialNumber, device.FirmwareVersion); err != nil {
-				return err
-			}
+	}
+	if device := result.ISAPIDevice; device != nil {
+		if _, err := fmt.Fprintf(writer, "%s %s %s %s %s\n", device.MAC, device.Address, device.Model, device.SerialNumber, device.FirmwareVersion); err != nil {
+			return err
+		}
+	}
+	if status := result.ISAPIStatus; status != nil {
+		if _, err := fmt.Fprintf(writer, "%s state=%s identity=unverified\n", status.Address, status.State); err != nil {
+			return err
 		}
 	}
 	for _, device := range result.Devices {
