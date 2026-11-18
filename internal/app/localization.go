@@ -12,7 +12,7 @@ import (
 )
 
 var defaultEnglishCatalog = map[string]string{
-	"ui.help":    "discover, isapi-discover (one-shot only), isapi-status, isapi-activate, isapi-network and isapi-user (one-shot only, disabled), activate, network, language, help, version, quit",
+	"ui.help":    "discover, isapi-discover and isapi-terminal (one-shot only), isapi-status, isapi-activate, isapi-network and isapi-user (one-shot only, disabled), activate, network, language, help, version, quit",
 	"ui.version": "version",
 }
 

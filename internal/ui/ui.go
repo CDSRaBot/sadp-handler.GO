@@ -52,6 +52,11 @@ type ISAPIUserCommand struct {
 	Confirm    bool
 }
 
+type ISAPITerminalCommand struct {
+	Connection ISAPIDiscoverCommand
+	TerminalID string
+}
+
 type ISAPIStatusCommand struct {
 	Address netip.Addr
 	Port    uint16
@@ -97,6 +102,7 @@ func (ISAPIDiscoverCommand) isCommand()        {}
 func (ISAPIActivateCommand) isCommand()        {}
 func (ISAPINetworkCommand) isCommand()         {}
 func (ISAPIUserCommand) isCommand()            {}
+func (ISAPITerminalCommand) isCommand()        {}
 func (ISAPIStatusCommand) isCommand()          {}
 func (ActivateCommand) isCommand()             {}
 func (NetworkCommand) isCommand()              {}
@@ -137,6 +143,7 @@ type CommandResult struct {
 	ISAPIActivation *ISAPIActivationResult `json:"isapi_activation,omitempty"`
 	ISAPINetwork    *ISAPINetworkResult    `json:"isapi_network,omitempty"`
 	ISAPIUser       *ISAPIUserResult       `json:"isapi_user,omitempty"`
+	ISAPITerminal   *ISAPITerminalResult   `json:"isapi_terminal,omitempty"`
 	Devices         []DeviceOutcome        `json:"devices,omitempty"`
 	Locales         []string               `json:"locales,omitempty"`
 	Version         string                 `json:"version,omitempty"`
@@ -172,6 +179,13 @@ type ISAPIUserResult struct {
 	ID        string                   `json:"id"`
 	Attempted bool                     `json:"attempted"`
 	Verified  bool                     `json:"verified"`
+}
+
+type ISAPITerminalResult struct {
+	Address    string                       `json:"address"`
+	MAC        string                       `json:"mac"`
+	TerminalID string                       `json:"terminal_id"`
+	Discovery  route.ISAPITerminalDiscovery `json:"discovery"`
 }
 
 type ISAPIDiscoveredDevice struct {
@@ -235,6 +249,10 @@ type ISAPIUserService interface {
 	ConfigureISAPIUser(context.Context, ISAPIUserCommand) (ISAPIUserResult, error)
 }
 
+type ISAPITerminalService interface {
+	ReadISAPITerminal(context.Context, ISAPITerminalCommand) (ISAPITerminalResult, error)
+}
+
 type DiscoverySession interface {
 	Events() <-chan DiscoveredDevice
 	Errors() <-chan error
@@ -278,6 +296,7 @@ type Dependencies struct {
 	ISAPIActivation  ISAPIActivationService
 	ISAPINetwork     ISAPINetworkService
 	ISAPIUser        ISAPIUserService
+	ISAPITerminal    ISAPITerminalService
 	DiscoverySession DiscoverySessionService
 	InterfaceLister  InterfaceLister
 	InterfaceIndex   *int
@@ -368,6 +387,8 @@ func DispatchCommand(ctx context.Context, command Command, dependencies Dependen
 		return dispatchISAPINetwork(ctx, value, dependencies)
 	case ISAPIUserCommand:
 		return dispatchISAPIUser(ctx, value, dependencies)
+	case ISAPITerminalCommand:
+		return dispatchISAPITerminal(ctx, value, dependencies)
 	case ActivateCommand:
 		return dispatchActivate(ctx, value, dependencies)
 	case NetworkCommand:
@@ -377,7 +398,7 @@ func DispatchCommand(ctx context.Context, command Command, dependencies Dependen
 	case HelpCommand:
 		message := dependencies.Help
 		if message == "" {
-			message = "discover, isapi-discover (one-shot only), isapi-status, isapi-activate, isapi-network and isapi-user (one-shot only, disabled), activate, network, language, help, version, quit"
+			message = "discover, isapi-discover and isapi-terminal (one-shot only), isapi-status, isapi-activate, isapi-network and isapi-user (one-shot only, disabled), activate, network, language, help, version, quit"
 		}
 		return CommandResult{Command: "help", OK: true, Message: message}, nil
 	case VersionCommand:
@@ -575,6 +596,8 @@ func commandName(command Command) string {
 		return "isapi-network"
 	case ISAPIUserCommand:
 		return "isapi-user"
+	case ISAPITerminalCommand:
+		return "isapi-terminal"
 	case ISAPIStatusCommand:
 		return "isapi-status"
 	case ActivateCommand:

@@ -68,6 +68,23 @@ The JSON result contains `isapi_device` with the verified MAC, address, model,
 serial number and firmware version when provided. Physical-device compatibility
 has not yet been established.
 
+### `isapi-terminal`
+
+```text
+sadp-handler --ui=no --once isapi-terminal --address IP --device MAC --username USER --password-stdin --terminal-id ID [--port PORT] [--https] [--basic]
+```
+
+Read discovery settings for one terminal. The command authenticates the
+device and checks its MAC before reading `DiscoveryMode`. Connection and
+password requirements are the same as for `isapi-discover`. The terminal ID
+must be a single path-safe identifier; `capabilities` is reserved.
+
+The JSON `isapi_terminal.discovery` object contains only fields returned by
+the device: `onvif_discovery_mode`, `is_discovery_mode`, `pcap_mode`, and
+`sadp`. Missing fields are not inferred. This is read-only and tested against
+synthetic responses only; it does not establish support for configuration
+changes or compatibility with a physical device.
+
 ### `isapi-status`
 
 ```text

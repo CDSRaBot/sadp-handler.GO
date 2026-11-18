@@ -269,25 +269,48 @@ func writeTextResult(writer io.Writer, result CommandResult) error {
 			activation.Address, activation.MAC, activation.Attempted, activation.Verified); err != nil {
 			return err
 		}
-		if network := result.ISAPINetwork; network != nil {
-			if _, err := fmt.Fprintf(writer, "%s %s attempted=%t verified=%t restart_required=%t",
-				network.Address, network.MAC, network.Attempted, network.Verified, network.RestartRequired); err != nil {
+	}
+	if network := result.ISAPINetwork; network != nil {
+		if _, err := fmt.Fprintf(writer, "%s %s attempted=%t verified=%t restart_required=%t",
+			network.Address, network.MAC, network.Attempted, network.Verified, network.RestartRequired); err != nil {
+			return err
+		}
+		if network.ObservedAddress != "" {
+			if _, err := fmt.Fprintf(writer, " observed_address=%s", network.ObservedAddress); err != nil {
 				return err
 			}
-			if user := result.ISAPIUser; user != nil {
-				if _, err := fmt.Fprintf(writer, "%s %s operation=%s id=%s attempted=%t verified=%t\n",
-					user.Address, user.MAC, user.Operation, user.ID, user.Attempted, user.Verified); err != nil {
+		}
+		if _, err := fmt.Fprintln(writer); err != nil {
+			return err
+		}
+	}
+	if user := result.ISAPIUser; user != nil {
+		if _, err := fmt.Fprintf(writer, "%s %s operation=%s id=%s attempted=%t verified=%t\n",
+			user.Address, user.MAC, user.Operation, user.ID, user.Attempted, user.Verified); err != nil {
+			return err
+		}
+	}
+	if terminal := result.ISAPITerminal; terminal != nil {
+		if _, err := fmt.Fprintf(writer, "%s %s terminal_id=%s", terminal.Address, terminal.MAC, terminal.TerminalID); err != nil {
+			return err
+		}
+		for _, field := range []struct {
+			name  string
+			value *string
+		}{
+			{"onvif_discovery_mode", terminal.Discovery.ONVIFDiscoveryMode},
+			{"is_discovery_mode", terminal.Discovery.ISDiscoveryMode},
+			{"pcap_mode", terminal.Discovery.PcapMode},
+			{"sadp", terminal.Discovery.SADP},
+		} {
+			if field.value != nil {
+				if _, err := fmt.Fprintf(writer, " %s=%s", field.name, *field.value); err != nil {
 					return err
 				}
 			}
-			if network.ObservedAddress != "" {
-				if _, err := fmt.Fprintf(writer, " observed_address=%s", network.ObservedAddress); err != nil {
-					return err
-				}
-			}
-			if _, err := fmt.Fprintln(writer); err != nil {
-				return err
-			}
+		}
+		if _, err := fmt.Fprintln(writer); err != nil {
+			return err
 		}
 	}
 	for _, device := range result.Devices {

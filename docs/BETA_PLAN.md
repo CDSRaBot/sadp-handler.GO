@@ -96,15 +96,20 @@ target device; the observed salted/AES profile is not yet established.
   and matching identity, and has not been tested on physical devices.
 - Read-only activation-state preflight is available in the one-shot CLI, TUI
   console and REPL; its result explicitly marks device identity as unverified.
+- Read-only TerminalMgr discovery settings are available through the
+  authenticated one-shot `isapi-terminal` command with an explicit MAC and
+  terminal ID. Only documented fields actually returned by the device are
+  reported. Capability parsing and configuration writes remain unimplemented;
+  physical compatibility is unverified.
 - ISAPI network has a one-shot path covered by synthetic static and DHCP
   tests, including authenticated identity/profile gating, uncertain PUT
   outcomes and restart reporting. The executable refuses it before password
   or network access because no verified device-specific profile is installed.
   Automatic reboot is not implemented. Static-address and SADP-assisted DHCP reappearance locators
   authenticate the candidate's ISAPI identity, but have not been validated
-  on physical devices. Explicit interface binding, user and terminal
-  management, interactive UI credential input, bulk workflows and release
-  packaging also remain to be implemented and validated.
+  on physical devices. Explicit interface binding, production user and
+  terminal management, interactive UI credential input, bulk workflows and
+  release acceptance also remain to be implemented and validated.
 - A beta release requires real-device testing on the supported models and
   firmware, native platform acceptance, and the signing decision above.
 - The `cmd/package-beta` tool can build local, unsigned, explicitly unverified

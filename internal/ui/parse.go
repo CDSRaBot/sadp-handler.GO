@@ -106,6 +106,8 @@ func ParseCLICommand(args []string) (Command, error) {
 		return parseISAPINetwork(args)
 	case "isapi-user":
 		return parseISAPIUser(args)
+	case "isapi-terminal":
+		return parseISAPITerminal(args)
 	case "isapi-status":
 		return parseISAPIStatus(args)
 	case "activate":

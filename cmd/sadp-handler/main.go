@@ -73,6 +73,7 @@ func run() int {
 			ISAPIStatus:     ui.ISAPIKnownAddressStatusService{},
 			ISAPIActivation: ui.ISAPIKnownAddressActivationService{Passwords: ui.NewOneShotPasswordProvider(os.Stdin)},
 			ISAPIUser:       ui.ISAPIKnownAddressUserService{Passwords: ui.NewOneShotPasswordProvider(os.Stdin)},
+			ISAPITerminal:   ui.ISAPIKnownAddressTerminalService{Passwords: ui.NewOneShotPasswordProvider(os.Stdin)},
 			ISAPINetwork: ui.ISAPIKnownAddressNetworkService{
 				Passwords:  ui.NewOneShotPasswordProvider(os.Stdin),
 				Sessions:   session,
