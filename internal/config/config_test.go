@@ -55,7 +55,8 @@ func TestLoadTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load(template) returned error: %v", err)
 	}
-	if settings.Network.MulticastGroup != "239.255.255.250" || settings.Discovery.CycleTimeout != "5s" {
+	if settings.Network.MulticastGroup != "239.255.255.250" || settings.Network.MaxSADPDatagramSize != 65507 ||
+		settings.Discovery.CycleTimeout != "5s" {
 		t.Fatalf("template settings were not loaded: %#v", settings)
 	}
 }

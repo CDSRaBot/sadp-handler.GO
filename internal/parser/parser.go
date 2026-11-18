@@ -21,6 +21,7 @@ type Device struct {
 	IPv4Gateway     netip.Addr
 	DHCP            bool
 	Activated       bool
+	ActivationKnown bool
 	Model           string
 	SerialNumber    string
 	SoftwareVersion string
@@ -53,6 +54,7 @@ const (
 	ParseOversizedDatagram ParseErrorKind = "oversized_datagram"
 	ParseMalformedXML      ParseErrorKind = "malformed_xml"
 	ParseUnsupported       ParseErrorKind = "unsupported_message"
+	ParseInquiry           ParseErrorKind = "inquiry_not_advertisement"
 	ParseMissingField      ParseErrorKind = "missing_field"
 	ParseInvalidField      ParseErrorKind = "invalid_field"
 )
@@ -92,6 +94,12 @@ func ParseAdvertisement(data []byte, sender net.Addr, maxDatagramSize int) (Devi
 	fields, err := decodeAdvertisement(data)
 	if err != nil {
 		return Device{}, err
+	}
+	if fields.root == "Probe" {
+		if fields.types == "inquiry" {
+			return Device{}, parseError(ParseInquiry, "", errors.New("inquiry is not a device advertisement"))
+		}
+		return Device{}, parseError(ParseUnsupported, "", errors.New("unsupported message type"))
 	}
 	if fields.root == "ProbeMatch" && !supportedType(fields.types) {
 		return Device{}, parseError(ParseUnsupported, "", errors.New("unsupported message type"))
@@ -156,6 +164,7 @@ func ParseAdvertisement(data []byte, sender net.Addr, maxDatagramSize int) (Devi
 		IPv4Gateway:     gateway,
 		DHCP:            fields.dhcp,
 		Activated:       activated,
+		ActivationKnown: fields.activated != "",
 		Model:           fields.model,
 		SerialNumber:    fields.serial,
 		SoftwareVersion: fields.softwareVersion,
@@ -243,7 +252,7 @@ func decodeAdvertisement(data []byte) (advertisementFields, error) {
 				return fields, parseError(ParseMalformedXML, "", errors.New("nested root element"))
 			}
 			fields.root = value.Name.Local
-			if fields.root != "ProbeMatch" && fields.root != "Hello" {
+			if fields.root != "ProbeMatch" && fields.root != "Hello" && fields.root != "Probe" {
 				return fields, parseError(ParseUnsupported, "", errors.New("unsupported root element"))
 			}
 			rootDepth = 1

@@ -202,8 +202,20 @@ type DiscoveredDevice struct {
 	IPv4            string    `json:"ipv4"`
 	Model           string    `json:"model,omitempty"`
 	Activated       bool      `json:"activated"`
+	ActivationKnown bool      `json:"activation_known"`
+	SerialNumber    string    `json:"serial_number,omitempty"`
 	SoftwareVersion string    `json:"software_version,omitempty"`
 	LastSeen        time.Time `json:"last_seen"`
+}
+
+func discoveryActivationState(known, active bool) string {
+	if !known {
+		return "unknown"
+	}
+	if active {
+		return "active"
+	}
+	return "inactive"
 }
 
 type DeviceOutcome struct {

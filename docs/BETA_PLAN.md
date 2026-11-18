@@ -53,8 +53,8 @@ target device; the observed salted/AES profile is not yet established.
 
 ## Release decisions and constraints
 
-- Choose signing before publication. An unsigned beta needs explicit warnings;
-  signing Windows artifacts requires securely managed signing credentials.
+- The user selected an unsigned beta. Publication must include explicit
+  unsigned-artifact warnings; this decision does not waive acceptance gates.
 - Do not publish a beta or claim interoperability without real-device
   acceptance. List unverified models and features as unsupported.
 - Research captures and local SDK logs can contain credentials and must never
@@ -112,6 +112,20 @@ target device; the observed salted/AES profile is not yet established.
   release acceptance also remain to be implemented and validated.
 - A beta release requires real-device testing on the supported models and
   firmware, native platform acceptance, and the signing decision above.
+- The user authorized only read-only discovery and display of device
+  information and activation state on a DS-2CD2643G2-LIZS2. A Windows 11 SADP
+  session received unauthenticated matching-MAC advertisements identifying
+  `DS-2CD2643G2-LIZS2U`, firmware `V5.7.23build 260320`, and reporting an
+  active state. The one-shot CLI successfully returned model, serial number,
+  MAC, IP and activation state with the bundled 65507-byte SADP datagram
+  limit. The previous bundled 1500-byte setting encountered an oversized
+  datagram in this network; the omitted/zero-value default remains 1500.
+  A read-only activation-status request to the
+  advertised address timed out; the host and advertised address were on
+  different subnets. This is not authenticated identity verification or
+  evidence of ISAPI compatibility. Further network, user, activation,
+  recovery, and terminal mutations are not authorized. Ubuntu acceptance
+  remains open.
 - Validation of commit `c01dd8b` passed the full Go test suite and the full
   race-enabled suite on Windows. A Linux amd64 executable was also built and
   its `version` command ran under Kali Linux on WSL. This smoke test is not

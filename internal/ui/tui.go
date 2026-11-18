@@ -394,7 +394,9 @@ func toParserDevice(device DiscoveredDevice) (parser.Device, bool) {
 		MAC:             mac,
 		IPv4:            ipv4,
 		Activated:       device.Activated,
+		ActivationKnown: device.ActivationKnown,
 		Model:           device.Model,
+		SerialNumber:    device.SerialNumber,
 		SoftwareVersion: device.SoftwareVersion,
 		Sender:          &net.IPAddr{IP: sender},
 	}, true
@@ -531,9 +533,7 @@ func (deviceDelegate) Render(writer io.Writer, model list.Model, index int, item
 	if !ok {
 		return
 	}
-	state := "inactive"
-	if value.device.Activated {
-		state = "active"
-	}
-	_, _ = fmt.Fprintf(writer, "%s  %-8s  %s", value.device.MAC, state, sanitizeTUIDisplay(value.device.Model))
+	state := discoveryActivationState(value.device.ActivationKnown, value.device.Activated)
+	_, _ = fmt.Fprintf(writer, "%s  %-8s  %s  %s", value.device.MAC, state,
+		sanitizeTUIDisplay(value.device.Model), sanitizeTUIDisplay(value.device.SerialNumber))
 }

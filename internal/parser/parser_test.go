@@ -57,6 +57,26 @@ func TestParseAdvertisementAcceptsReferenceProbeMatch(t *testing.T) {
 	assertDevice(t, device, "00:11:22:33:44:55", "192.0.2.20", true, "DS-TEST-1", "SN-TEST-1", "V1.2.3", sender)
 }
 
+func TestParseAdvertisementActivationPresence(t *testing.T) {
+	sender := &net.UDPAddr{IP: net.ParseIP(senderIP), Port: 37020}
+	for _, tt := range []struct {
+		field  string
+		known  bool
+		active bool
+	}{
+		{"", false, false},
+		{"<Activated></Activated>", false, false},
+		{"<Activated>true</Activated>", true, true},
+		{"<Activated>false</Activated>", true, false},
+	} {
+		payload := `<ProbeMatch><Types>inquiry</Types><MAC>00:11:22:33:44:55</MAC><IPv4Address>192.0.2.20</IPv4Address>` + tt.field + `</ProbeMatch>`
+		device, err := parser.ParseAdvertisement([]byte(payload), sender, defaultLimit)
+		if err != nil || device.ActivationKnown != tt.known || device.Activated != tt.active {
+			t.Fatalf("field=%q device=%+v err=%v", tt.field, device, err)
+		}
+	}
+}
+
 func TestParseAdvertisementAcceptsObservedAliasesAndHelloWithoutUUID(t *testing.T) {
 	sender := &net.UDPAddr{IP: net.ParseIP(senderIP), Port: 37020}
 	for _, testCase := range []struct {

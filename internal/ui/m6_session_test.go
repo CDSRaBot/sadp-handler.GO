@@ -29,9 +29,12 @@ func TestM6DiscoverySessionResolvesInterfaceAndStreamsDevices(t *testing.T) {
 				Kind:       discovery.DeviceFound,
 				ObservedAt: observedAt,
 				Device: &parser.Device{
-					MAC:    net.HardwareAddr{0, 17, 34, 51, 68, 85},
-					IPv4:   netip.MustParseAddr("192.0.2.20"),
-					Sender: &net.UDPAddr{IP: net.ParseIP("192.0.2.1"), Port: 37020},
+					MAC:             net.HardwareAddr{0, 17, 34, 51, 68, 85},
+					IPv4:            netip.MustParseAddr("192.0.2.20"),
+					Sender:          &net.UDPAddr{IP: net.ParseIP("192.0.2.1"), Port: 37020},
+					SerialNumber:    "synthetic-serial",
+					Activated:       true,
+					ActivationKnown: true,
 				},
 			})
 		},
@@ -46,6 +49,11 @@ func TestM6DiscoverySessionResolvesInterfaceAndStreamsDevices(t *testing.T) {
 	device, ok := <-session.Events()
 	if !ok || device.MAC != "00:11:22:33:44:55" || device.Sender != "192.0.2.1:37020" || !device.LastSeen.Equal(observedAt) {
 		t.Fatalf("unexpected streamed device: %#v, %t", device, ok)
+	}
+	converted, valid := toParserDevice(device)
+	if !valid || device.SerialNumber != "synthetic-serial" || !device.ActivationKnown || !device.Activated ||
+		converted.SerialNumber != device.SerialNumber || !converted.ActivationKnown || !converted.Activated {
+		t.Fatalf("discovery details were lost: %#v -> %#v", device, converted)
 	}
 }
 

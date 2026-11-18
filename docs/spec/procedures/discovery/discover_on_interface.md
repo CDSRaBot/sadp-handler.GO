@@ -42,6 +42,10 @@ func DiscoverOnInterface(
 4. In continuous mode, schedule another probe every `ProbeInterval`, measured from completion of the preceding scheduled send. Keep receiving between and during sends until external cancellation.
 5. In bounded mode, start a receive timer after each successful probe. Do not stop a cycle early when a device is received. After the full `CycleTimeout`, send the next probe immediately if cycles remain; after the last full receive window, cancel the listener and return.
 6. On every datagram, invoke M2 `ParseAdvertisement` with its sender and the same `MaxSADPDatagramSize`. On parse/validation error, emit a sanitized `DatagramRejected` event and continue if the handler succeeds. Emit `DeviceFound` for every valid packet.
+
+An identified `Probe` inquiry is not an advertisement: M2 reports it as
+`inquiry_not_advertisement`. UI discovery may ignore this expected traffic;
+other rejected packets remain visible as errors and must not hide partial results.
 7. A scheduled send failure cancels the session and is returned. On external cancellation or normal bounded completion, stop and join the scheduler before canceling the listener context; then wait for `Listen` to close the connection and finish cleanup. If a listener/handler failure occurs first, `Listen` may close the connection while one serialized write is completing; stop and join the scheduler, preserve both primary and concurrent write/close failures, and do not hide the original failure. Classify only errors caused by session cancellation as shutdown, never as a successful sent probe.
 
 The probe cadence, receive-window length, and repeat count are application policy, not asserted SADP timing/retry requirements. Do not correlate UUIDs, infer reply ownership, or treat `Hello` as caused by a probe.

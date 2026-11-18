@@ -105,6 +105,10 @@ func (s *m6DiscoverySession) run(ctx context.Context, discover func(context.Cont
 			if event.Err == nil {
 				event.Err = errors.New("discovery datagram was rejected without a cause")
 			}
+			var parseErr *parser.ParseError
+			if errors.As(event.Err, &parseErr) && parseErr.Kind == parser.ParseInquiry {
+				return nil
+			}
 			rejectedCount++
 			if rejectedErr == nil {
 				rejectedErr = event.Err
@@ -150,6 +154,8 @@ func discoveredDeviceFromParser(device parser.Device) (DiscoveredDevice, bool) {
 		IPv4:            device.IPv4.String(),
 		Model:           device.Model,
 		Activated:       device.Activated,
+		ActivationKnown: device.ActivationKnown,
+		SerialNumber:    device.SerialNumber,
 		SoftwareVersion: device.SoftwareVersion,
 	}, true
 }

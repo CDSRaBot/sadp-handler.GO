@@ -170,6 +170,10 @@ func runOneShot(ctx context.Context, args []string, stdout, stderr io.Writer, de
 		writeDiagnostic(stderr, err.Error())
 		return ExitInvalidInput
 	}
+	if discover, ok := command.(DiscoverCommand); ok && dependencies.DiscoveryPolicy.MaxSADPDatagramSize != 0 {
+		discover.Policy.MaxSADPDatagramSize = dependencies.DiscoveryPolicy.MaxSADPDatagramSize
+		command = discover
+	}
 	result, err := DispatchCommand(ctx, command, dependencies)
 	if writeResult(stdout, dependencies.Config.Format, result) != nil {
 		writeDiagnostic(stderr, "write command result failed")
@@ -250,7 +254,9 @@ func writeTextResult(writer io.Writer, result CommandResult) error {
 		return err
 	}
 	for _, device := range result.Discovery {
-		if _, err := fmt.Fprintf(writer, "%s %s %s %s\n", device.MAC, device.IPv4, device.Model, device.Sender); err != nil {
+		state := discoveryActivationState(device.ActivationKnown, device.Activated)
+		if _, err := fmt.Fprintf(writer, "%s %s %s %s serial_number=%s activation=%s\n",
+			device.MAC, device.IPv4, device.Model, device.Sender, device.SerialNumber, state); err != nil {
 			return err
 		}
 	}

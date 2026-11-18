@@ -34,8 +34,15 @@ Discover SADP devices through the selected network interface.
 - `--interface INDEX` is the required index of an eligible network interface.
 - `--timeout DURATION` is the required positive receive-window duration for each cycle, for example `5s`.
 - `--repeat COUNT` is the number of cycles, from `1` to `100`; the default is `1`.
+- The maximum received SADP datagram size is taken from `network.max_sadp_datagram_size` in `settings.json`. The bundled file sets 65507 bytes; if the setting is absent or zero, the default is 1500 bytes.
 
 Each cycle sends one inquiry probe immediately, then receives advertisements for the full `--timeout`. Receiving a device does not end a cycle early. The result is a device list; repeated advertisements are aggregated by normalized MAC address and sender address. An empty list is a successful result.
+
+The result includes the serial number when advertised. The text output labels
+activation as `active`, `inactive`, or `unknown`. In JSON, consult
+`activation_known` before interpreting `activated`; when it is false the
+activation state was not provided. SADP advertisements are unauthenticated,
+so these fields do not verify device identity.
 
 ```text
 discover --interface 4 --timeout 5s
