@@ -34,7 +34,7 @@ type platform struct {
 	arch string
 }
 
-var platforms = []platform{{"windows", "amd64"}, {"linux", "amd64"}, {"darwin", "amd64"}}
+var platforms = []platform{{"windows", "amd64"}, {"linux", "amd64"}}
 
 func main() {
 	version := flag.String("version", "", "beta version, for example v0.1.0-beta.1")

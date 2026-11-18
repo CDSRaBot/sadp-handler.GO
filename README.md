@@ -43,7 +43,7 @@ go run ./cmd/package-beta --version v0.1.0-beta.1 --output PATH_TO_NEW_DIRECTORY
 The output parent directory must exist and the output path must not. Tracked
 changes and untracked build inputs are rejected; an error during final copying
 can leave an incomplete output directory, which must not be used. The tool
-builds Windows, Linux and macOS amd64 archives and `SHA256SUMS`, including only
+builds Windows and Linux amd64 archives and `SHA256SUMS`, including only
 the binary, tracked documentation, settings template, license and an explicit
 unverified-beta warning. It does not sign, publish or establish compatibility;
 the acceptance and release gates in the [beta plan](./docs/BETA_PLAN.md) remain

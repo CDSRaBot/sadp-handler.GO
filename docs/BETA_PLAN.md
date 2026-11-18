@@ -43,20 +43,18 @@ target device; the observed salted/AES profile is not yet established.
    `go test ./...`, `go test -race ./...`, `go vet ./...`, `go build ./...`
    and applicable documentation checks.
 7. **Real-device acceptance:** test the claimed operations on real devices,
-   record model and firmware compatibility, and verify Windows 10/11, Ubuntu
-   and macOS x64. A reachable ISAPI address is required; discovery alone does
+   record model and firmware compatibility, and verify Windows 10/11 and
+   Ubuntu x64. A reachable ISAPI address is required; discovery alone does
    not establish HTTP reachability.
-8. **Release:** after all acceptance gates pass, build Windows, Linux and macOS
-   x64 artifacts, verify packaged configuration and localization, publish
+8. **Release:** after all acceptance gates pass, build Windows and Linux x64
+   artifacts; do not build a macOS artifact. Verify packaged configuration and localization, publish
    SHA-256 checksums, release notes and compatibility matrix, and create a
    prerelease in the CDSRaBot repository.
 
 ## Release decisions and constraints
 
 - Choose signing before publication. An unsigned beta needs explicit warnings;
-  macOS Gatekeeper may require manual authorization. Signed artifacts require
-  securely managed Windows and Apple signing credentials and macOS
-  notarization.
+  signing Windows artifacts requires securely managed signing credentials.
 - Do not publish a beta or claim interoperability without real-device
   acceptance. List unverified models and features as unsupported.
 - Research captures and local SDK logs can contain credentials and must never

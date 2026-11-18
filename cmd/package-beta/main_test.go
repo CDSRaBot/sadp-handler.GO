@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -22,6 +23,13 @@ func TestBetaVersionValidation(t *testing.T) {
 		if got := betaVersion.MatchString(tt.version); got != tt.valid {
 			t.Errorf("version %q accepted=%v", tt.version, got)
 		}
+	}
+}
+
+func TestBetaTargetPlatforms(t *testing.T) {
+	want := []platform{{"windows", "amd64"}, {"linux", "amd64"}}
+	if !reflect.DeepEqual(platforms, want) {
+		t.Fatalf("beta platforms = %v, want %v", platforms, want)
 	}
 }
 
