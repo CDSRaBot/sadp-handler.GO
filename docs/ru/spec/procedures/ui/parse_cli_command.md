@@ -39,6 +39,7 @@ app [--lang CODE] [--format text|json] --ui=no --once COMMAND [COMMAND OPTIONS]
 discover --interface INDEX --timeout DURATION [--repeat COUNT]
 isapi-discover --address IP --device MAC --username USER --password-stdin [--port PORT] [--https] [--basic]
 isapi-activate --address IP --device MAC --username USER --password-stdin [--port PORT] [--https] [--basic]
+isapi-network --address IP --device MAC --username USER --password-stdin --interface-id ID --yes (--new-address IPv4/PREFIX --gateway IPv4 | --dhcp --discovery-interface INDEX) [--port PORT] [--https] [--basic]
 isapi-status --address IP [--port PORT] [--https]
 activate --device MAC [--device MAC ...] --password-stdin [--email EMAIL] [--yes]
 network --device MAC [--device MAC ...] --password-stdin (--dhcp | --address IPv4/PREFIX --gateway IPv4) [--yes]
@@ -62,6 +63,11 @@ quit
   транспорта, что и discovery, и работает только в one-shot режиме. В
   приложении нет проверенного профиля активации, поэтому команда отклоняется
   до ввода пароля или сетевого обращения.
+- `isapi-network` требует `--yes`, идентификатор сетевого интерфейса ISAPI и
+  либо статический IPv4-префикс со шлюзом в той же подсети, либо DHCP с
+  подходящим интерфейсом обнаружения на хосте. Сетевой и широковещательный
+  адреса отклоняются. В приложении нет проверенного сетевого профиля, поэтому
+  команда отклоняется до ввода пароля или сетевого обращения.
 - `activate` и `network` принимают один или несколько повторяющихся параметров `--device MAC`. MAC должен быть корректным шестибайтовым EUI-48; дубликаты после нормализации отклоняются. При двух и более MAC обязателен `--yes`. Для одной цели one-shot не выводит дополнительное подтверждение.
 - `--password-stdin` задаёт stdin как источник пароля. В REPL читать пароль при выключенном отображении символов; в one-shot читать одну строку, в том числе из перенаправленного stdin. Пока эти операции заблокированы protocol gate, пароль не читать; после включения операции получать секрет только после проверки команды, целей и подтверждения. Не принимать пароль как обычное значение опции, аргумент команды, переменную окружения, элемент отображаемой истории или диагностическое сообщение.
 - Настройка сети требует ровно один из параметров `--dhcp` и `--address`. Для статического `--address` обязателен `--gateway`; с `--dhcp` шлюз запрещён. CIDR задаёт адрес и префикс.

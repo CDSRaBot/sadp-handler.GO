@@ -4,7 +4,7 @@
 
 **SADP-handler** is a terminal-based Go utility for discovering Hikvision cameras and NVRs over SADP, with activation and configuration through supported device protocols. Discovery targets devices on the local Layer 2 network, including devices that do not yet have an address usable by the host.
 
-The architecture baseline is established and the specifications define system boundaries, module APIs, and atomic procedures. The Python implementation is the verified behavioral baseline for discovery. The Go implementation contains core discovery, configuration, logic, UI, and route components and requires repository and real-device validation. SADP activation is disabled; the planned ISAPI activation workflow is not yet wired into the executable. Network mutations require a verified device profile, and unverified salted/AES SADP profiles remain unsupported.
+The architecture baseline is established and the specifications define system boundaries, module APIs, and atomic procedures. The Python implementation is the verified behavioral baseline for discovery. The Go implementation contains core discovery, configuration, logic, UI, and route components and requires repository and real-device validation. SADP activation is disabled; separate one-shot ISAPI activation and network paths are wired but disabled without verified device-specific profiles. Unverified salted/AES SADP network profiles remain unsupported.
 
 ## 2. Functional Scope
 

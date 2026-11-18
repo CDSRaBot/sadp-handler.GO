@@ -96,9 +96,11 @@ target device; the observed salted/AES profile is not yet established.
   and matching identity, and has not been tested on physical devices.
 - Read-only activation-state preflight is available in the one-shot CLI, TUI
   console and REPL; its result explicitly marks device identity as unverified.
-- ISAPI network workflow orchestration is covered by synthetic tests but has
-  no verified device-specific profile, automatic reboot or executable
-  integration. Static-address and SADP-assisted DHCP reappearance locators
+- ISAPI network has a one-shot path covered by synthetic static and DHCP
+  tests, including authenticated identity/profile gating, uncertain PUT
+  outcomes and restart reporting. The executable refuses it before password
+  or network access because no verified device-specific profile is installed.
+  Automatic reboot is not implemented. Static-address and SADP-assisted DHCP reappearance locators
   authenticate the candidate's ISAPI identity, but have not been validated
   on physical devices. Explicit interface binding, user and terminal
   management, interactive UI credential input, bulk workflows and release

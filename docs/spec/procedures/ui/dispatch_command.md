@@ -160,6 +160,13 @@ func DispatchCommand(
   password or network access. Preserve `attempted` on any failure after PUT
   is attempted; `verified` is true only after status and authenticated identity
   verification. A failed attempted mutation may have an unknown outcome.
+- One-shot `isapi-network` requires explicit confirmation, a verified profile
+  and a gate matching authenticated device information. DHCP also requires a
+  currently eligible discovery interface. Preserve attempted, restart-required
+  and observed-address information on failure; never report verified success
+  without authenticated identity and network postcondition checks. The
+  executable has no verified profile and refuses the operation before password
+  or network access.
 - `PasswordFromPrompt` is used by the TUI's masked prompt; `PasswordFromStdin` is used by CLI `--password-stdin`. Neither source is read until all command, target, confirmation, and implementation-gate checks succeed.
 - `LanguageList` lists available locales; if M5 returns `ErrNoExternalLocales` with `["en"]`, treat that as a successful built-in-English-only result (`OK=true`). `LanguageSwitch` uses the exact `Code` value. A switch does not persist settings.
 - `TargetSelector` must select exactly one strategy: one or more explicit `MACs`, `UseTUISelection`, or `UseFocusedDevice`. Reject empty or conflicting selectors; resolution confirms the selected devices exist before any secret input.
@@ -194,8 +201,9 @@ func DispatchCommand(
   REPL show the explicit unavailable result before target resolution,
   confirmation, secret input or network access. In `isapi_only` mode the
   unavailable ISAPI workflow is reported instead. One-shot CLI arguments are
-  still validated during parsing. Network and ISAPI activation are not yet
-  connected to the executable.
+  still validated during parsing. The interactive `activate` and `network`
+  workflows remain unavailable; separate one-shot ISAPI paths fail closed
+  without verified profiles.
 - Use the declared stable failure codes `invalid_argument`, `unsupported`, `operation_failed`, and `canceled`. `CommandFailure` is the typed result-level contract for caller/UI branching; sanitize `Message` so it cannot expose secrets, raw payloads, or sensitive filesystem contents.
 
 ## 4. Discovery Aggregation

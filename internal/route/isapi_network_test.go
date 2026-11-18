@@ -20,6 +20,12 @@ type testNetworkProfile struct {
 	verifyErr error
 }
 
+type testNetworkGate struct{}
+
+func (testNetworkGate) VerifyNetworkDevice(context.Context, Target, DeviceInfo) error {
+	return nil
+}
+
 func (p testNetworkProfile) BuildUpdate(collection, current []byte, interfaceID string, _ logic.NetworkConfig) ([]byte, error) {
 	if string(collection) != "<Interfaces/>" || string(current) != "<Interface/>" || interfaceID != "1" {
 		return nil, errors.New("unexpected synthetic profile input")
@@ -131,6 +137,7 @@ func TestISAPINetworkWorkflowUsesVerifiedProfileAndIdentity(t *testing.T) {
 			workflow := ISAPINetworkWorkflow{
 				Transport: transport,
 				Profile:   tt.profile,
+				Gate:      testNetworkGate{},
 				Locator:   testNetworkLocator{address: netip.MustParseAddr("198.51.100.20"), mac: tt.locatorMAC, calls: &calls, err: tt.locatorErr},
 			}
 			result, err := workflow.Configure(context.Background(), target, "1", plan)
@@ -160,6 +167,7 @@ func TestISAPINetworkWorkflowRejectsInvalidInputsBeforeRequests(t *testing.T) {
 	workflow := ISAPINetworkWorkflow{
 		Transport: &ISAPIHTTPTransport{BaseURL: "http://192.0.2.10", Username: "admin", Password: "synthetic-password"},
 		Profile:   testNetworkProfile{},
+		Gate:      testNetworkGate{},
 		Locator:   testNetworkLocator{address: netip.MustParseAddr("198.51.100.20"), calls: &calls},
 	}
 	plan := logic.NetworkConfig{Address: netip.MustParsePrefix("198.51.100.20/24"), Gateway: netip.MustParseAddr("198.51.100.1")}

@@ -43,7 +43,9 @@ export-locale-template = "--export-locale-template" path
 - `--export-locale-template PATH` exports the M5 locale template and is mutually exclusive with every other command.
 - `activate` and `network` construct typed intents for the common dispatcher. With activation unavailable, display its explicit disabled/unsupported result before resolving targets, requesting confirmation or secrets, or starting network work. Once supported, collect credentials only through masked UI input; passwords, challenges, and derived secrets are never accepted in the command line.
 - `help` lists the shared command catalog. `version` shows the application version/build identifier. `quit` cancels owned workflows and exits the TUI cleanly.
-- SADP activation is disabled; the ISAPI replacement and the network workflow are not yet connected to the executable.
+- SADP activation is disabled; the interactive `activate` and `network`
+  workflows remain unavailable. Separate one-shot ISAPI paths fail closed
+  without verified device profiles.
 - After syntax validation, dispatch through P4.5; resolve targets for available mutation workflows. Parsing does not perform target lookup, show forms, collect secrets, or execute operations.
 
 ## 4. Errors and Tests

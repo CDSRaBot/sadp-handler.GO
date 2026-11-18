@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/CDSRaBot/sadp-handler.GO/internal/app"
 	"github.com/CDSRaBot/sadp-handler.GO/internal/config"
@@ -67,10 +68,18 @@ func run() int {
 	}
 	dependencies := app.BuildDependencies(runtime, app.ServiceSet{
 		UI: ui.Dependencies{
-			Discovery:        ui.SessionDiscoveryService{Sessions: session},
-			ISAPIDiscovery:   ui.ISAPIKnownAddressService{Passwords: ui.NewOneShotPasswordProvider(os.Stdin)},
-			ISAPIStatus:      ui.ISAPIKnownAddressStatusService{},
-			ISAPIActivation:  ui.ISAPIKnownAddressActivationService{Passwords: ui.NewOneShotPasswordProvider(os.Stdin)},
+			Discovery:       ui.SessionDiscoveryService{Sessions: session},
+			ISAPIDiscovery:  ui.ISAPIKnownAddressService{Passwords: ui.NewOneShotPasswordProvider(os.Stdin)},
+			ISAPIStatus:     ui.ISAPIKnownAddressStatusService{},
+			ISAPIActivation: ui.ISAPIKnownAddressActivationService{Passwords: ui.NewOneShotPasswordProvider(os.Stdin)},
+			ISAPINetwork: ui.ISAPIKnownAddressNetworkService{
+				Passwords:  ui.NewOneShotPasswordProvider(os.Stdin),
+				Sessions:   session,
+				Interfaces: session,
+				Policy: ui.DiscoveryPolicy{
+					ProbeInterval: time.Minute, MaxSADPDatagramSize: runtime.Discovery.MaxSADPDatagramSize,
+				},
+			},
 			DiscoverySession: session,
 			InterfaceLister:  session,
 			Locales:          locales,

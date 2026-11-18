@@ -105,6 +105,27 @@ device state may be unknown; inspect the device before retrying. Basic
 authentication requires explicit `--basic` and `--https`, and password input
 is redirected, as for `isapi-discover`.
 
+### `isapi-network`
+
+```text
+sadp-handler --ui=no --once isapi-network --address IP --device MAC --username USER --password-stdin --interface-id ID --yes --new-address IPv4/PREFIX --gateway IPv4 [--port PORT] [--https] [--basic]
+sadp-handler --ui=no --once isapi-network --address IP --device MAC --username USER --password-stdin --interface-id ID --yes --dhcp --discovery-interface INDEX [--port PORT] [--https] [--basic]
+```
+
+This one-shot ISAPI network path is **disabled in the executable** until a
+device-specific network profile and authenticated model/firmware gate are
+verified. It rejects the command before password input or network access.
+`--yes` explicitly confirms the operation; DHCP requires an eligible host
+interface for SADP-assisted reappearance discovery. This does not change host
+network settings.
+
+The workflow has synthetic tests only. If enabled with a verified profile in a
+future version, `isapi_network` reports `attempted`, `verified`,
+`restart_required`, and, when found, `observed_address`. An attempted but
+unverified change may have succeeded; inspect the device before retrying. A
+required restart is reported but never performed automatically. The returned
+address is checked against authenticated device identity and configuration.
+
 ### `activate`
 
 ```text
@@ -113,7 +134,8 @@ activate --device MAC [--device MAC ...] --password-stdin [--email EMAIL] [--yes
 
 Request activation of one or more devices.
 
-- SADP activation is disabled. ISAPI activation is planned but is not yet wired into the executable.
+- SADP activation is disabled. The separate `isapi-activate` path is wired but
+  remains unavailable without a verified device profile.
 - `--device MAC` specifies a target EUI-48 MAC address. This option may be repeated; duplicates after normalization are rejected.
 - `--password-stdin` selects stdin as the password source. In the REPL, input must not echo characters; in one-shot mode, one line is read. Do not pass the password as a command argument.
 - `--email EMAIL` is an optional email address for the activation operation.

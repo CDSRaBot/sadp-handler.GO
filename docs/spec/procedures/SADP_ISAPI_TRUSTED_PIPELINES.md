@@ -392,9 +392,10 @@ Network changes are disruptive. The result must preserve the old identity,
 requested plan, observed new address, and verification state without exposing
 credentials.
 
-The Go workflow currently requires an explicitly supplied, verified
-device-specific network profile and a reappearance locator; neither is wired
-into the executable yet. It bounds a workflow to 60 seconds, limits the
+The Go workflow requires an explicitly supplied, verified device-specific
+network profile, an authenticated device gate and a reappearance locator.
+The one-shot path is wired but disabled because no production profile or gate
+is available. It bounds a workflow to 60 seconds, limits the
 interface identifier to 64 safe ASCII characters and the mutation body to
 64 KiB, and records whether a mutation was attempted even when verification
 fails; an attempted mutation may or may not have reached the device.
@@ -402,7 +403,7 @@ An available static-address locator retries bounded authenticated identity
 checks at the requested address. A DHCP locator uses bounded SADP discovery
 for address candidates and authenticates each matching candidate through
 ISAPI; a SADP advertisement alone is never sufficient. Neither locator nor
-the workflow has been validated on physical devices or wired to the executable.
+the workflow has been validated on physical devices.
 It reports a required restart without automatically issuing one. Its mutation
 transport obtains an authentication challenge with a safe GET before sending
 a credential-bearing write; Digest is preferred, while Basic requires
